@@ -14,6 +14,9 @@
 		8AA5372228E269E100146E99 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AA5372128E269E100146E99 /* ContentView.swift */; };
 		8AA5372428E269E200146E99 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8AA5372328E269E200146E99 /* Assets.xcassets */; };
 		8AA5372728E269E200146E99 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8AA5372628E269E200146E99 /* Preview Assets.xcassets */; };
+		D100000228E8000000AAA001 /* darksword.m in Sources */ = {isa = PBXBuildFile; fileRef = D100000528E8000000AAA001 /* darksword.m */; };
+		D100000328E8000000AAA001 /* kfs.m in Sources */ = {isa = PBXBuildFile; fileRef = D100000728E8000000AAA001 /* kfs.m */; };
+		D100000428E8000000AAA001 /* utils.m in Sources */ = {isa = PBXBuildFile; fileRef = D100000928E8000000AAA001 /* utils.m */; };
 		D100000128E8000000AAA001 /* ExploitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D100000028E8000000AAA001 /* ExploitManager.swift */; };
 /* End PBXBuildFile section */
 
@@ -29,6 +32,12 @@
 		8AA5372328E269E200146E99 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = "card-test/Assets.xcassets"; sourceTree = SOURCE_ROOT; };
 		8AA5372628E269E200146E99 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		D100000028E8000000AAA001 /* ExploitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExploitManager.swift; sourceTree = "<group>"; };
+		D100000528E8000000AAA001 /* darksword.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = kexploit/darksword.m; sourceTree = "<group>"; };
+		D100000628E8000000AAA001 /* darksword.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = kexploit/darksword.h; sourceTree = "<group>"; };
+		D100000728E8000000AAA001 /* kfs.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = kexploit/kfs.m; sourceTree = "<group>"; };
+		D100000828E8000000AAA001 /* kfs.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = kexploit/kfs.h; sourceTree = "<group>"; };
+		D100000928E8000000AAA001 /* utils.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = kexploit/utils.m; sourceTree = "<group>"; };
+		D100000A28E8000000AAA001 /* utils.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = kexploit/utils.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -67,12 +76,26 @@
 				8AA5372128E269E100146E99 /* ContentView.swift */,
 				8AA5372328E269E200146E99 /* Assets.xcassets */,
 				8AA5372528E269E200146E99 /* Preview Content */,
+				D100000B28E8000000AAA001 /* kexploit */,
 				8A928B9C28E5E1EB00EADBA5 /* ImagePicker.swift */,
 				8A928BA028E5F04800EADBA5 /* ObjcHelper.m */,
 				8A928B9F28E5F04800EADBA5 /* card-test-Bridging-Header.h */,
 				8A928BA228E5F06D00EADBA5 /* ObjcHelper.h */,
 			);
 			path = "card-test";
+			sourceTree = "<group>";
+		};
+		D100000B28E8000000AAA001 /* kexploit */ = {
+			isa = PBXGroup;
+			children = (
+				D100000528E8000000AAA001 /* darksword.m */,
+				D100000628E8000000AAA001 /* darksword.h */,
+				D100000728E8000000AAA001 /* kfs.m */,
+				D100000828E8000000AAA001 /* kfs.h */,
+				D100000928E8000000AAA001 /* utils.m */,
+				D100000A28E8000000AAA001 /* utils.h */,
+			);
+			path = kexploit;
 			sourceTree = "<group>";
 		};
 		8AA5372528E269E200146E99 /* Preview Content */ = {
@@ -158,6 +181,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D100000228E8000000AAA001 /* darksword.m in Sources */,
+				D100000328E8000000AAA001 /* kfs.m in Sources */,
+				D100000428E8000000AAA001 /* utils.m in Sources */,
 				D100000128E8000000AAA001 /* ExploitManager.swift in Sources */,
 				8A928B9D28E5E1EB00EADBA5 /* ImagePicker.swift in Sources */,
 				8A928BA128E5F04800EADBA5 /* ObjcHelper.m in Sources */,
