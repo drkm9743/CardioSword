@@ -53,3 +53,8 @@ What this does not include:
 	`/var/mobile/Library/Passes/Cards`.
 4. Pick a card, set an image, and let the app refresh Wallet services.
 5. If changes do not appear immediately, re-open Wallet after the UI restart.
+
+## Credits:
+cisc0disco (https://github.com/cisc0disco/Cardio)
+opa334 (https://github.com/opa334/darksword-kexploit)
+rooootdev (https://github.com/rooootdev/lara)
