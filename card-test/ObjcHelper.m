@@ -5,6 +5,9 @@
 #import "kexploit/darksword.m"
 #import "kexploit/kfs.m"
 
+void enumerateProcessesUsingBlock(void (^enumerator)(pid_t pid, NSString* executablePath, BOOL* stop));
+void killall(NSString* processName);
+
 @implementation ObjcHelper
 
 -(NSNumber *)getDeviceSubType {
