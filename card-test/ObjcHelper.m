@@ -57,7 +57,7 @@ void killall(NSString* processName);
 }
 
 -(NSArray<NSString *> *)kfsListDirectory:(NSString *)path {
-    if (path.length == 0 || !kfs_is_ready()) {
+    if (path.length == 0 || !kfs_can_listdir()) {
         return @[];
     }
 
