@@ -522,12 +522,19 @@ struct ContentView: View {
                 }
                 .tag(0)
 
+            CommunityView()
+                .tabItem {
+                    Image(systemName: "globe")
+                    Text("Community")
+                }
+                .tag(1)
+
             exploitTab
                 .tabItem {
                     Image(systemName: "terminal.fill")
                     Text("Exploit")
                 }
-                .tag(1)
+                .tag(2)
         }
         .accentColor(.white)
         .onAppear {

@@ -23,6 +23,8 @@ struct CardView: View {
     @State private var showSheet = false
     @State private var showError = false
     @State private var errorMessage = ""
+    @State private var imageVersion = 0          // bump to force re-render
+    @State private var showSaved = false
 
     private var cardDirectoryPath: String {
         return card.directoryPath
@@ -109,6 +111,7 @@ struct CardView: View {
             try backupCurrentIfNeeded()
             try exploit.overwriteWalletFile(targetPath: targetPath, data: data)
             removeCacheIfPresent()
+            imageVersion += 1
             helper.refreshWalletServices()
         } catch {
             errorMessage = error.localizedDescription
@@ -138,7 +141,35 @@ struct CardView: View {
             }
 
             removeCacheIfPresent()
+            imageVersion += 1
             helper.refreshWalletServices()
+        } catch {
+            errorMessage = error.localizedDescription
+            showError = true
+        }
+    }
+
+    private func saveToDocuments() {
+        guard let image = previewImage() else {
+            errorMessage = "Cannot read card image"
+            showError = true
+            return
+        }
+
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let safeName = card.bundleName
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: " ", with: "_")
+        let dest = docs.appendingPathComponent("\(safeName).png")
+
+        do {
+            if let data = image.pngData() {
+                try data.write(to: dest, options: .atomic)
+                showSaved = true
+            } else {
+                errorMessage = "Could not encode image"
+                showError = true
+            }
         } catch {
             errorMessage = error.localizedDescription
             showError = true
@@ -179,94 +210,93 @@ struct CardView: View {
     }
 
     var body: some View {
-        ZStack {
-            if let preview = previewImage() {
-                Image(uiImage: preview)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 320)
-                    .zIndex(0)
-                    .cornerRadius(5)
-                    .onTapGesture {
-                        if exploit.canApplyCardChanges {
-                            showSheet = true
-                        } else {
-                            errorMessage = exploit.blockedReason
-                            showError = true
-                        }
-                    }
-                    .sheet(isPresented: $showSheet) {
-                        ImagePicker(sourceType: .photoLibrary, selectedImage: self.$cardImage)
-                    }
-                    .onChange(of: self.cardImage) { newImage in
-                        setImage(image: newImage)
-                    }
-            } else {
-                // Card discovered via KFS but image can't be read (sandbox)
-                // Show a placeholder card with bundle name and file info
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.blue.opacity(0.4), Color.purple.opacity(0.3)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+        VStack(spacing: 8) {
+            // Card image (tappable to replace)
+            Group {
+                if let preview = previewImage() {
+                    Image(uiImage: preview)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 320)
+                        .cornerRadius(10)
+                } else {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.blue.opacity(0.4), Color.purple.opacity(0.3)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                         )
-                    )
-                    .frame(width: 320, height: 200)
-                    .overlay(
-                        VStack(spacing: 8) {
-                            Image(systemName: "creditcard.fill")
-                                .font(.system(size: 36))
-                                .foregroundColor(.white.opacity(0.8))
-                            Text(card.bundleName)
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(.white)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.center)
-                            Text(card.backgroundFileName)
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundColor(.white.opacity(0.6))
-                            Text("Image preview blocked by sandbox")
-                                .font(.system(size: 10))
-                                .foregroundColor(.orange.opacity(0.8))
-                        }
-                        .padding()
-                    )
-                    .onTapGesture {
-                        if exploit.canApplyCardChanges {
-                            showSheet = true
-                        } else {
-                            errorMessage = exploit.blockedReason
-                            showError = true
-                        }
-                    }
-                    .sheet(isPresented: $showSheet) {
-                        ImagePicker(sourceType: .photoLibrary, selectedImage: self.$cardImage)
-                    }
-                    .onChange(of: self.cardImage) { newImage in
-                        setImage(image: newImage)
-                    }
+                        .frame(width: 320, height: 200)
+                        .overlay(
+                            VStack(spacing: 8) {
+                                Image(systemName: "creditcard.fill")
+                                    .font(.system(size: 36))
+                                    .foregroundColor(.white.opacity(0.8))
+                                Text(card.bundleName)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.center)
+                            }
+                            .padding()
+                        )
+                }
+            }
+            .id(imageVersion)   // force re-render when bumped
+            .onTapGesture {
+                if exploit.canApplyCardChanges {
+                    showSheet = true
+                } else {
+                    errorMessage = exploit.blockedReason
+                    showError = true
+                }
+            }
+            .sheet(isPresented: $showSheet) {
+                ImagePicker(sourceType: .photoLibrary, selectedImage: self.$cardImage)
+            }
+            .onChange(of: self.cardImage) { newImage in
+                setImage(image: newImage)
             }
 
-            if fm.fileExists(atPath: backupPath) {
-                Button {
-                    resetImage()
-                } label: {
-                    Image(systemName: "arrow.counterclockwise.circle.fill")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 40)
-                        .foregroundColor(exploit.canApplyCardChanges ? Color.red : Color.gray)
+            Text(card.bundleName)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(.white.opacity(0.8))
+                .lineLimit(1)
+
+            // Action buttons
+            HStack(spacing: 16) {
+                if fm.fileExists(atPath: backupPath) || imageVersion > 0 {
+                    Button {
+                        resetImage()
+                    } label: {
+                        Label("Restore", systemImage: "arrow.counterclockwise")
+                            .font(.system(size: 13))
+                    }
+                    .foregroundColor(.red)
                 }
-                .zIndex(1)
-                .padding(.top, 265)
+
+                Button {
+                    saveToDocuments()
+                } label: {
+                    Label("Save", systemImage: "square.and.arrow.down")
+                        .font(.system(size: 13))
+                }
+                .foregroundColor(.cyan)
             }
+            .padding(.top, 4)
         }
-        .alert(isPresented: $showError) {
-            Alert(
-                title: Text("Error Occured"),
-                message: Text(errorMessage)
-            )
+        .alert("Error", isPresented: $showError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage)
+        }
+        .alert("Saved", isPresented: $showSaved) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Card image saved to Documents folder. You can access it in the Files app.")
+        }
         }
     }
 }
