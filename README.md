@@ -110,7 +110,8 @@ If you find CardioDS useful, consider buying me a coffee:
 This project is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
 
 **Third-party components:**
+
+- DarkSword (htimesnine / opa334) 
 - XPF, ChOma (opa334)
 - libgrabkernel2 (AlfieCG)
 - Lara (rooootdev) — AGPL-3.0
-- DarkSword (htimesnine / opa334) — see upstream repos
