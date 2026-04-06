@@ -1,5 +1,6 @@
 import SwiftUI
 
+/// CardioDS entry point — initialises kernel offset cache on launch.
 @main
 struct card_testApp: App {
     init() {
