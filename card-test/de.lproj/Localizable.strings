@@ -95,3 +95,14 @@
 "card_source_gallery" = "Fotomediathek";
 "card_source_files" = "Dateien";
 "join_discord" = "Discord beitreten";
+
+/* Community save destination */
+"community_save_where" = "Speichern in...";
+"community_save_gallery" = "Fotomediathek";
+"community_save_documents" = "Dokumente";
+
+/* My Cards submit */
+"mycards_submit" = "Einreichen";
+"mycards_submit_opened" = "GitHub wird geoeffnet, um deine Karte einzureichen...";
+"mycards_submit_error" = "GitHub konnte nicht geoeffnet werden.";
+"mycards_submit_read_error" = "Kartendaten konnten nicht gelesen werden.";

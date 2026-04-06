@@ -102,3 +102,14 @@
 "card_source_gallery" = "Photo Library";
 "card_source_files" = "Files";
 "join_discord" = "Join Discord";
+
+/* Community save destination */
+"community_save_where" = "Save to...";
+"community_save_gallery" = "Photo Library";
+"community_save_documents" = "Documents";
+
+/* My Cards submit */
+"mycards_submit" = "Submit";
+"mycards_submit_opened" = "Opening GitHub to submit your card...";
+"mycards_submit_error" = "Could not open GitHub.";
+"mycards_submit_read_error" = "Could not read card data.";

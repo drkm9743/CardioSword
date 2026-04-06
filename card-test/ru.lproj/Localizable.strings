@@ -95,3 +95,14 @@
 "card_source_gallery" = "Медиатека";
 "card_source_files" = "Файлы";
 "join_discord" = "Присоединиться в Discord";
+
+/* Community save destination */
+"community_save_where" = "Сохранить в...";
+"community_save_gallery" = "Фотогалерея";
+"community_save_documents" = "Документы";
+
+/* My Cards submit */
+"mycards_submit" = "Отправить";
+"mycards_submit_opened" = "Открываем GitHub для отправки карты...";
+"mycards_submit_error" = "Не удалось открыть GitHub.";
+"mycards_submit_read_error" = "Не удалось прочитать данные карты.";

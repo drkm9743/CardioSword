@@ -95,3 +95,14 @@
 "card_source_gallery" = "照片图库";
 "card_source_files" = "文件";
 "join_discord" = "加入 Discord";
+
+/* Community save destination */
+"community_save_where" = "保存到...";
+"community_save_gallery" = "相册";
+"community_save_documents" = "文件";
+
+/* My Cards submit */
+"mycards_submit" = "提交";
+"mycards_submit_opened" = "正在打开 GitHub 提交你的卡片...";
+"mycards_submit_error" = "无法打开 GitHub。";
+"mycards_submit_read_error" = "无法读取卡片数据。";

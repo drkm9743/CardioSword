@@ -95,3 +95,13 @@
 "card_source_gallery" = "フォトライブラリ";
 "card_source_files" = "ファイル";
 "join_discord" = "Discord に参加";
+/* Community save destination */
+"community_save_where" = "保存先...";
+"community_save_gallery" = "写真ライブラリ";
+"community_save_documents" = "書類";
+
+/* My Cards submit */
+"mycards_submit" = "送信";
+"mycards_submit_opened" = "GitHubを開いてカードを送信します...";
+"mycards_submit_error" = "GitHubを開けませんでした。";
+"mycards_submit_read_error" = "カードデータを読み込めませんでした。";

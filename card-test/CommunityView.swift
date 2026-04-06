@@ -496,6 +496,15 @@ final class CommunityViewModel: ObservableObject {
     @Published var searchText = ""
     @Published var downloadingIDs: Set<String> = []
     @Published var downloadedMessage: String?
+    @Published var pendingSaveCard: CommunityCard?
+    @Published var pendingSaveData: Data?
+
+    private static let cacheDir: URL = {
+        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("CommunityCards", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
 
     private let countryOrder: [(code: String, name: String, flag: String)] = [
         ("US", "United States", "🇺🇸"),
@@ -588,33 +597,67 @@ final class CommunityViewModel: ObservableObject {
                 self?.downloadingIDs.remove(card.id)
                 guard let data = data, error == nil,
                       let httpResp = response as? HTTPURLResponse,
-                      httpResp.statusCode == 200 else {
+                      httpResp.statusCode == 200,
+                      let image = UIImage(data: data),
+                      let pngData = image.pngData() else {
                     self?.downloadedMessage = "Download failed: \(error?.localizedDescription ?? "unknown error")"
                     return
                 }
 
-                // Save to Documents
-                let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-                let safeName = "\(card.issuer)_\(card.name)"
-                    .replacingOccurrences(of: " ", with: "_")
-                    .replacingOccurrences(of: "/", with: "_")
+                // Cache to disk
+                Self.cacheImageData(pngData, for: card.id)
 
-                let ext = card.imageURL.lowercased().hasSuffix(".png") ? "png" : "png"
-                let dest = docs.appendingPathComponent("\(safeName).\(ext)")
-
-                do {
-                    // Convert to PNG if needed
-                    if let image = UIImage(data: data), let pngData = image.pngData() {
-                        try pngData.write(to: dest, options: .atomic)
-                    } else {
-                        try data.write(to: dest, options: .atomic)
-                    }
-                    self?.downloadedMessage = "\(card.name) saved to Documents"
-                } catch {
-                    self?.downloadedMessage = "Save failed: \(error.localizedDescription)"
-                }
+                // Ask user where to save
+                self?.pendingSaveData = pngData
+                self?.pendingSaveCard = card
             }
         }.resume()
+    }
+
+    func saveToGallery() {
+        guard let data = pendingSaveData, let image = UIImage(data: data) else { return }
+        let card = pendingSaveCard
+        UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
+        downloadedMessage = "\(card?.name ?? "Card") saved to Gallery"
+        clearPending()
+    }
+
+    func saveToDocuments() {
+        guard let data = pendingSaveData, let card = pendingSaveCard else { return }
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let safeName = "\(card.issuer)_\(card.name)"
+            .replacingOccurrences(of: " ", with: "_")
+            .replacingOccurrences(of: "/", with: "_")
+        let dest = docs.appendingPathComponent("\(safeName).png")
+        do {
+            try data.write(to: dest, options: .atomic)
+            downloadedMessage = "\(card.name) saved to Documents"
+        } catch {
+            downloadedMessage = "Save failed: \(error.localizedDescription)"
+        }
+        clearPending()
+    }
+
+    func clearPending() {
+        pendingSaveCard = nil
+        pendingSaveData = nil
+    }
+
+    // MARK: - Disk Cache
+
+    static func cacheKey(for cardID: String) -> URL {
+        cacheDir.appendingPathComponent("\(cardID).png")
+    }
+
+    static func cachedImage(for cardID: String) -> UIImage? {
+        let path = cacheKey(for: cardID)
+        guard let data = try? Data(contentsOf: path) else { return nil }
+        return UIImage(data: data)
+    }
+
+    static func cacheImageData(_ data: Data, for cardID: String) {
+        let path = cacheKey(for: cardID)
+        try? data.write(to: path, options: .atomic)
     }
 }
 
@@ -623,6 +666,7 @@ final class CommunityViewModel: ObservableObject {
 struct CommunityView: View {
     @StateObject private var vm = CommunityViewModel()
     @State private var showAlert = false
+    @State private var showSaveChoice = false
 
     var body: some View {
         ZStack {
@@ -734,10 +778,28 @@ struct CommunityView: View {
         .onChange(of: vm.downloadedMessage) { msg in
             if msg != nil { showAlert = true }
         }
+        .onChange(of: vm.pendingSaveCard) { card in
+            if card != nil { showSaveChoice = true }
+        }
         .alert("Download", isPresented: $showAlert) {
             Button("OK") { vm.downloadedMessage = nil }
         } message: {
             Text(vm.downloadedMessage ?? "")
+        }
+        .confirmationDialog(
+            NSLocalizedString("community_save_where", comment: ""),
+            isPresented: $showSaveChoice,
+            titleVisibility: .visible
+        ) {
+            Button(NSLocalizedString("community_save_gallery", comment: "")) {
+                vm.saveToGallery()
+            }
+            Button(NSLocalizedString("community_save_documents", comment: "")) {
+                vm.saveToDocuments()
+            }
+            Button(NSLocalizedString("card_cancel", comment: ""), role: .cancel) {
+                vm.clearPending()
+            }
         }
     }
 }
@@ -751,16 +813,25 @@ final class RemoteImageLoader: ObservableObject {
     @Published var loading = false
 
     private var url: URL?
+    private var cardID: String?
     private var retryCount = 0
     private static let maxRetries = 2
 
-    func load(from urlString: String) {
+    func load(from urlString: String, cardID: String) {
         guard let url = URL(string: urlString) else {
             failed = true
             return
         }
         self.url = url
+        self.cardID = cardID
         retryCount = 0
+
+        // Try disk cache first
+        if let cached = CommunityViewModel.cachedImage(for: cardID) {
+            image = cached
+            return
+        }
+
         fetchImage()
     }
 
@@ -788,6 +859,10 @@ final class RemoteImageLoader: ObservableObject {
                    httpResp.statusCode == 200,
                    let img = UIImage(data: data) {
                     self.image = img
+                    // Cache to disk
+                    if let id = self.cardID, let pngData = img.pngData() {
+                        CommunityViewModel.cacheImageData(pngData, for: id)
+                    }
                 } else if self.retryCount < Self.maxRetries {
                     self.retryCount += 1
                     DispatchQueue.main.asyncAfter(deadline: .now() + Double(self.retryCount) * 0.5) {
@@ -840,7 +915,7 @@ struct CommunityCardCell: View {
             .frame(width: 200, height: 126)
             .onAppear {
                 if loader.image == nil && !loader.loading {
-                    loader.load(from: card.imageURL)
+                    loader.load(from: card.imageURL, cardID: card.id)
                 }
             }
 

@@ -116,6 +116,51 @@ final class MyCardsViewModel: ObservableObject {
         let path = backupDir.appendingPathComponent(card.fileName)
         return try? Data(contentsOf: path)
     }
+
+    func submitToGitHub(_ card: SavedCard) {
+        guard let data = imageDataFor(card),
+              let image = UIImage(data: data),
+              let pngData = image.pngData() else {
+            statusMessage = NSLocalizedString("mycards_submit_read_error", comment: "")
+            return
+        }
+
+        let base64 = pngData.base64EncodedString()
+        let title = "Community Card Submission: \(card.bundleName)"
+        let body = """
+        **Card Name:** \(card.name)
+        **Bundle Name:** \(card.bundleName)
+        **Date Saved:** \(card.displayDate)
+
+        **Image (base64 PNG):**
+        <details>
+        <summary>Click to expand image data</summary>
+
+        ```
+        \(base64)
+        ```
+        </details>
+
+        ---
+        *Submitted from CardioDS app*
+        """
+
+        let repo = "drkm9743/CardioDS"
+        guard var urlComponents = URLComponents(string: "https://github.com/\(repo)/issues/new") else { return }
+        urlComponents.queryItems = [
+            URLQueryItem(name: "title", value: title),
+            URLQueryItem(name: "body", value: body),
+            URLQueryItem(name: "labels", value: "community-card")
+        ]
+
+        guard let url = urlComponents.url else {
+            statusMessage = NSLocalizedString("mycards_submit_error", comment: "")
+            return
+        }
+
+        UIApplication.shared.open(url)
+        statusMessage = NSLocalizedString("mycards_submit_opened", comment: "")
+    }
 }
 
 // MARK: - My Cards View
@@ -195,7 +240,8 @@ struct MyCardsView: View {
                                     vm: vm,
                                     exploit: exploit,
                                     onApply: { applyCard(saved) },
-                                    onDelete: { cardToDelete = saved }
+                                    onDelete: { cardToDelete = saved },
+                                    onSubmit: { vm.submitToGitHub(saved) }
                                 )
                             }
                         }
@@ -286,6 +332,7 @@ struct SavedCardRow: View {
     let exploit: ExploitManager
     let onApply: () -> Void
     let onDelete: () -> Void
+    let onSubmit: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
@@ -325,6 +372,14 @@ struct SavedCardRow: View {
                             .font(.system(size: 11, weight: .medium))
                     }
                     .foregroundColor(.cyan)
+
+                    Button {
+                        onSubmit()
+                    } label: {
+                        Label("mycards_submit", systemImage: "arrow.up.circle")
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .foregroundColor(.green)
 
                     Button {
                         onDelete()
