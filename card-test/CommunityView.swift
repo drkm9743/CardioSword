@@ -2,7 +2,7 @@
 
 // MARK: - Data Model
 
-struct CommunityCard: Identifiable, Codable {
+struct CommunityCard: Identifiable, Codable, Equatable {
     let id: String
     let name: String
     let issuer: String
