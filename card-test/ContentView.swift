@@ -310,14 +310,6 @@ struct ContentView: View {
                     .font(.system(size: 15))
                     .foregroundColor(.white)
 
-                if !exploit.canApplyCardChanges {
-                    Text(exploit.statusMessage)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.orange)
-                        .padding(.horizontal, 20)
-                        .multilineTextAlignment(.center)
-                }
-
                 if !cards.isEmpty {
                     TabView {
                         ForEach(cards) { card in
@@ -351,26 +343,11 @@ struct ContentView: View {
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundColor(.white.opacity(0.75))
 
-                        if !exploit.darkswordReady {
-                            Text("cards_run_exploit_hint")
-                                .font(.system(size: 13))
-                                .foregroundColor(.orange)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, 20)
-                        }
-
                         HStack(spacing: 12) {
                             Button("cards_open_wallet") {
                                 openWalletApp()
                             }
                             .foregroundColor(.cyan)
-
-                            if !exploit.darkswordReady {
-                                Button("cards_run_all_scan") {
-                                    runAllAndReload()
-                                }
-                                .foregroundColor(.white)
-                            }
                         }
 
                         Button("cards_scan_again") {
@@ -471,33 +448,28 @@ struct ContentView: View {
                     }
 
                     HStack(spacing: 10) {
-                        if !exploit.darkswordReady {
-                            Button(exploit.darkswordRunning ? NSLocalizedString("exploit_running", comment: "") : NSLocalizedString("exploit_run_darksword", comment: "")) {
-                                exploit.runDarksword { _ in
-                                    recheckAndReload()
-                                }
+                        Button(exploit.darkswordRunning ? NSLocalizedString("exploit_running", comment: "") : NSLocalizedString("exploit_run_darksword", comment: "")) {
+                            exploit.runDarksword { _ in
+                                recheckAndReload()
                             }
-                            .disabled(exploit.darkswordRunning)
-                            .foregroundColor(.white)
                         }
+                        .disabled(exploit.darkswordRunning || exploit.darkswordReady)
+                        .foregroundColor(exploit.darkswordReady ? .green : .white)
 
-                        if exploit.darkswordReady && !exploit.sandboxEscaped {
-                            Button("exploit_escape_sandbox") {
-                                exploit.escapeSandbox { _ in
-                                    recheckAndReload()
-                                }
+                        Button("exploit_escape_sandbox") {
+                            exploit.escapeSandbox { _ in
+                                recheckAndReload()
                             }
-                            .disabled(exploit.darkswordRunning)
-                            .foregroundColor(.white)
                         }
+                        .disabled(exploit.darkswordRunning || !exploit.darkswordReady || exploit.sandboxEscaped)
+                        .foregroundColor(exploit.sandboxEscaped ? .green : .white)
 
-                        if !exploit.sandboxEscaped {
-                            Button("exploit_run_all") {
-                                runAllAndReload()
-                            }
-                            .disabled(exploit.darkswordRunning)
-                            .foregroundColor(.white)
+                        Button("exploit_run_all") {
+                            runAllAndReload()
                         }
+                        .disabled(exploit.darkswordRunning || exploit.sandboxEscaped)
+                        .foregroundColor(.cyan)
+                    }
                     }
 
                     if exploit.darkswordReady && exploit.sandboxEscaped {
