@@ -113,6 +113,10 @@
 "custom_submit_error" = "Не удалось подготовить отправку.";
 "custom_submit_opened" = "Открываем GitHub для отправки пользовательской карты...";
 "custom_submit_send" = "Отправить";
+"custom_submitting" = "Отправка...";
+"custom_submit_success" = "Карта отправлена на проверку!";
+"github_token_missing" = "Токен GitHub не настроен.";
+"github_token_invalid" = "Токен GitHub истёк или недействителен.";
 "custom_name_title" = "Название Карты";
 "custom_name_placeholder" = "напр. Мой Дизайн";
 "custom_name_message" = "Введите название для вашего дизайна карты.";

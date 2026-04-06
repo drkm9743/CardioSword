@@ -113,6 +113,10 @@
 "custom_submit_error" = "Impossible de préparer la soumission.";
 "custom_submit_opened" = "Ouverture de GitHub pour soumettre votre carte personnalisée...";
 "custom_submit_send" = "Soumettre";
+"custom_submitting" = "Envoi en cours...";
+"custom_submit_success" = "Carte soumise pour examen !";
+"github_token_missing" = "Token GitHub non configuré.";
+"github_token_invalid" = "Token GitHub expiré ou invalide.";
 "custom_name_title" = "Nom de la Carte";
 "custom_name_placeholder" = "ex. Mon Design Personnalisé";
 "custom_name_message" = "Entrez un nom pour votre design de carte.";

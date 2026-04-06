@@ -113,6 +113,10 @@
 "custom_submit_error" = "无法准备提交。";
 "custom_submit_opened" = "正在打开 GitHub 提交你的自定义卡片...";
 "custom_submit_send" = "提交";
+"custom_submitting" = "提交中...";
+"custom_submit_success" = "卡片已提交审核！";
+"github_token_missing" = "GitHub 令牌未配置。";
+"github_token_invalid" = "GitHub 令牌已过期或无效。";
 "custom_name_title" = "卡片名称";
 "custom_name_placeholder" = "例如 我的自定义设计";
 "custom_name_message" = "输入你的卡片设计名称。";

@@ -120,6 +120,10 @@
 "custom_submit_error" = "Could not prepare submission.";
 "custom_submit_opened" = "Opening GitHub to submit your custom card...";
 "custom_submit_send" = "Submit";
+"custom_submitting" = "Submitting...";
+"custom_submit_success" = "Card submitted for review!";
+"github_token_missing" = "GitHub token not configured.";
+"github_token_invalid" = "GitHub token expired or invalid.";
 "custom_name_title" = "Card Name";
 "custom_name_placeholder" = "e.g. My Custom Design";
 "custom_name_message" = "Enter a name for your custom card design.";

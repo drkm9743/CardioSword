@@ -112,6 +112,10 @@
 "custom_submit_error" = "送信を準備できませんでした。";
 "custom_submit_opened" = "GitHubを開いてカスタムカードを送信します...";
 "custom_submit_send" = "送信";
+"custom_submitting" = "送信中...";
+"custom_submit_success" = "カードが審査に送信されました！";
+"github_token_missing" = "GitHubトークンが未設定です。";
+"github_token_invalid" = "GitHubトークンが期限切れまたは無効です。";
 "custom_name_title" = "カード名";
 "custom_name_placeholder" = "例: マイカスタムデザイン";
 "custom_name_message" = "カードデザインの名前を入力してください。";

@@ -495,6 +495,7 @@ final class CommunityViewModel: ObservableObject {
     @Published var countrySections: [CommunityCountrySection] = []
     @Published var searchText = ""
     @Published var isLoading = true
+    @Published var isSubmitting = false
     @Published var downloadingIDs: Set<String> = []
     @Published var downloadedMessage: String?
     @Published var pendingSaveCard: CommunityCard?
@@ -586,46 +587,12 @@ final class CommunityViewModel: ObservableObject {
     // MARK: - Submit Custom Card to GitHub
 
     func submitCustomCard(name: String, image: UIImage) {
-        guard let pngData = image.pngData() else {
-            downloadedMessage = L("custom_submit_error")
-            return
+        isSubmitting = true
+        Task {
+            let result = await GitHubService.submitCustomCard(name: name, image: image)
+            isSubmitting = false
+            downloadedMessage = result.message
         }
-
-        let base64 = pngData.base64EncodedString()
-        let title = "Custom Card Submission: \(name)"
-        let body = """
-        **Card Name:** \(name)
-        **Issuer:** Custom
-        **Country:** N/A
-
-        **Image (base64 PNG):**
-        <details>
-        <summary>Click to expand image data</summary>
-
-        ```
-        \(base64)
-        ```
-        </details>
-
-        ---
-        *Submitted from CardioDS app*
-        """
-
-        let repo = "drkm9743/CardioDS"
-        guard var urlComponents = URLComponents(string: "https://github.com/\(repo)/issues/new") else { return }
-        urlComponents.queryItems = [
-            URLQueryItem(name: "title", value: title),
-            URLQueryItem(name: "body", value: body),
-            URLQueryItem(name: "labels", value: "custom-card")
-        ]
-
-        guard let url = urlComponents.url else {
-            downloadedMessage = L("custom_submit_error")
-            return
-        }
-
-        UIApplication.shared.open(url)
-        downloadedMessage = L("custom_submit_opened")
     }
 
     var filteredSections: [CommunityCountrySection] {
@@ -784,9 +751,14 @@ struct CommunityView: View {
                         showImagePicker = true
                     } label: {
                         HStack(spacing: 8) {
-                            Image(systemName: "plus.rectangle.on.folder")
-                                .font(.system(size: 15))
-                            Text(L("custom_submit_button"))
+                            if vm.isSubmitting {
+                                ProgressView()
+                                    .tint(.white)
+                            } else {
+                                Image(systemName: "plus.rectangle.on.folder")
+                                    .font(.system(size: 15))
+                            }
+                            Text(L(vm.isSubmitting ? "custom_submitting" : "custom_submit_button"))
                                 .font(.system(size: 14, weight: .semibold))
                         }
                         .foregroundColor(.white)
@@ -801,6 +773,7 @@ struct CommunityView: View {
                         )
                         .cornerRadius(10)
                     }
+                    .disabled(vm.isSubmitting)
                     .padding(.horizontal, 16)
 
                     Text(L("custom_submit_hint"))
@@ -928,6 +901,7 @@ struct CommunityView: View {
             Button(L("custom_submit_send")) {
                 let name = customCardName.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !name.isEmpty else { return }
+                guard !vm.isSubmitting else { return }
                 vm.submitCustomCard(name: name, image: pickedImage)
                 pickedImage = UIImage()
             }

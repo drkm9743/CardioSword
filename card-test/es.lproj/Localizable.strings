@@ -120,6 +120,10 @@
 "custom_submit_error" = "No se pudo preparar el envío.";
 "custom_submit_opened" = "Abriendo GitHub para enviar tu tarjeta personalizada...";
 "custom_submit_send" = "Enviar";
+"custom_submitting" = "Enviando...";
+"custom_submit_success" = "¡Tarjeta enviada para revisión!";
+"github_token_missing" = "Token de GitHub no configurado.";
+"github_token_invalid" = "Token de GitHub expirado o inválido.";
 "custom_name_title" = "Nombre de la Tarjeta";
 "custom_name_placeholder" = "ej. Mi Diseño Personalizado";
 "custom_name_message" = "Introduce un nombre para tu diseño de tarjeta.";

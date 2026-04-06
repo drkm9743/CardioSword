@@ -112,6 +112,10 @@
 "custom_submit_error" = "Impossibile preparare l'invio.";
 "custom_submit_opened" = "Apertura di GitHub per inviare la tua carta personalizzata...";
 "custom_submit_send" = "Invia";
+"custom_submitting" = "Invio in corso...";
+"custom_submit_success" = "Carta inviata per la revisione!";
+"github_token_missing" = "Token GitHub non configurato.";
+"github_token_invalid" = "Token GitHub scaduto o non valido.";
 "custom_name_title" = "Nome della Carta";
 "custom_name_placeholder" = "es. Il Mio Design Personalizzato";
 "custom_name_message" = "Inserisci un nome per il tuo design di carta.";

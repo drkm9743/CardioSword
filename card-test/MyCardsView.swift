@@ -24,6 +24,7 @@ struct SavedCard: Identifiable, Codable {
 final class MyCardsViewModel: ObservableObject {
     @Published var savedCards: [SavedCard] = []
     @Published var statusMessage: String?
+    @Published var isSubmitting = false
 
     private let manifestFile = "my_cards_manifest.json"
 
@@ -118,48 +119,24 @@ final class MyCardsViewModel: ObservableObject {
     }
 
     func submitToGitHub(_ card: SavedCard) {
+        guard !isSubmitting else { return }
         guard let data = imageDataFor(card),
-              let image = UIImage(data: data),
-              let pngData = image.pngData() else {
+              let image = UIImage(data: data) else {
             statusMessage = L("mycards_submit_read_error")
             return
         }
 
-        let base64 = pngData.base64EncodedString()
-        let title = "Community Card Submission: \(card.bundleName)"
-        let body = """
-        **Card Name:** \(card.name)
-        **Bundle Name:** \(card.bundleName)
-        **Date Saved:** \(card.displayDate)
-
-        **Image (base64 PNG):**
-        <details>
-        <summary>Click to expand image data</summary>
-
-        ```
-        \(base64)
-        ```
-        </details>
-
-        ---
-        *Submitted from CardioDS app*
-        """
-
-        let repo = "drkm9743/CardioDS"
-        guard var urlComponents = URLComponents(string: "https://github.com/\(repo)/issues/new") else { return }
-        urlComponents.queryItems = [
-            URLQueryItem(name: "title", value: title),
-            URLQueryItem(name: "body", value: body),
-            URLQueryItem(name: "labels", value: "community-card")
-        ]
-
-        guard let url = urlComponents.url else {
-            statusMessage = L("mycards_submit_error")
-            return
+        isSubmitting = true
+        Task {
+            let result = await GitHubService.submitDumpedCard(
+                name: card.name,
+                bundleName: card.bundleName,
+                date: card.displayDate,
+                image: image
+            )
+            isSubmitting = false
+            statusMessage = result.message
         }
-
-        UIApplication.shared.open(url)
-        statusMessage = L("mycards_submit_opened")
     }
 }
 
@@ -376,10 +353,17 @@ struct SavedCardRow: View {
                     Button {
                         onSubmit()
                     } label: {
-                        Label("mycards_submit", systemImage: "arrow.up.circle")
-                            .font(.system(size: 11, weight: .medium))
+                        if vm.isSubmitting {
+                            ProgressView()
+                                .tint(.green)
+                                .frame(height: 14)
+                        } else {
+                            Label("mycards_submit", systemImage: "arrow.up.circle")
+                                .font(.system(size: 11, weight: .medium))
+                        }
                     }
                     .foregroundColor(.green)
+                    .disabled(vm.isSubmitting)
 
                     Button {
                         onDelete()

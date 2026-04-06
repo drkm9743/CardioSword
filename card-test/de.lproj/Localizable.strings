@@ -113,6 +113,10 @@
 "custom_submit_error" = "Einreichung konnte nicht vorbereitet werden.";
 "custom_submit_opened" = "GitHub wird geöffnet, um deine benutzerdefinierte Karte einzureichen...";
 "custom_submit_send" = "Einreichen";
+"custom_submitting" = "Wird gesendet...";
+"custom_submit_success" = "Karte zur Überprüfung eingereicht!";
+"github_token_missing" = "GitHub-Token nicht konfiguriert.";
+"github_token_invalid" = "GitHub-Token abgelaufen oder ungültig.";
 "custom_name_title" = "Kartenname";
 "custom_name_placeholder" = "z.B. Mein eigenes Design";
 "custom_name_message" = "Gib einen Namen für dein Kartendesign ein.";
