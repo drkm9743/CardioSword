@@ -538,6 +538,7 @@ final class CommunityViewModel: ObservableObject {
     private func loadAndBuild() async {
         // Fetch remote catalog and merge with built-in
         let remote = await Self.fetchRemoteCatalog()
+        print("[community] remote catalog: \(remote.count) cards fetched")
         if !remote.isEmpty {
             // Merge: built-in + remote, deduplicate by id
             var seen = Set(builtInCards.map(\.id))
@@ -546,6 +547,7 @@ final class CommunityViewModel: ObservableObject {
                 if !seen.contains(card.id) {
                     seen.insert(card.id)
                     merged.append(card)
+                    print("[community] + \(card.name) [\(card.country)/\(card.issuer)]")
                 }
             }
             cards = merged
@@ -554,17 +556,28 @@ final class CommunityViewModel: ObservableObject {
     }
 
     nonisolated private static func fetchRemoteCatalog() async -> [CommunityCard] {
-        do {
-            var request = URLRequest(url: remoteCatalogURL)
-            request.cachePolicy = .reloadIgnoringLocalCacheData
-            request.timeoutInterval = 10
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return [] }
-            return try JSONDecoder().decode([CommunityCard].self, from: data)
-        } catch {
-            print("[community] remote catalog fetch failed: \(error)")
-            return []
+        // Try multiple URLs in case CDN caches stale version
+        let urls = [
+            remoteCatalogURL,
+            URL(string: "https://raw.githubusercontent.com/drkm9743/CardioDS/refs/heads/main/community-cards/catalog.json")!
+        ]
+        for url in urls {
+            do {
+                var request = URLRequest(url: url)
+                request.cachePolicy = .reloadIgnoringLocalCacheData
+                request.timeoutInterval = 10
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                    print("[community] fetch \(url.lastPathComponent) HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)")
+                    continue
+                }
+                let decoded = try JSONDecoder().decode([CommunityCard].self, from: data)
+                if !decoded.isEmpty { return decoded }
+            } catch {
+                print("[community] fetch failed (\(url.lastPathComponent)): \(error)")
+            }
         }
+        return []
     }
 
     private func buildSectionsAsync() async {
@@ -635,8 +648,11 @@ final class CommunityViewModel: ObservableObject {
     }
 
     var filteredSections: [CommunityCountrySection] {
-        if searchText.isEmpty { return countrySections }
-        let q = searchText.lowercased()
+        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return countrySections }
+        // Require at least 2 characters to avoid expensive filtering
+        guard trimmed.count >= 2 else { return countrySections }
+        let q = trimmed.lowercased()
         return countrySections.compactMap { section in
             let filteredCats = section.categories.compactMap { cat in
                 let filtered = cat.cards.filter {
