@@ -31,7 +31,7 @@ enum GitHubService {
 
     // MARK: - Submit Custom Card
 
-    static func submitCustomCard(name: String, issuer: String, country: String, image: UIImage) async -> SubmissionResult {
+    static func submitCustomCard(name: String, image: UIImage) async -> SubmissionResult {
         guard let resized = resizeForCard(image),
               let jpegData = compressForUpload(resized) else {
             return SubmissionResult(success: false, message: L("custom_submit_error"), issueURL: nil)
@@ -45,8 +45,8 @@ enum GitHubService {
         | Field | Value |
         |-------|-------|
         | **Card Name** | \(name) |
-        | **Issuer** | \(issuer) |
-        | **Country** | \(country) |
+        | **Issuer** | Custom |
+        | **Country** | N/A |
 
         ### Card Image
 

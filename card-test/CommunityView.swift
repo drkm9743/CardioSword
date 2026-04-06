@@ -586,10 +586,10 @@ final class CommunityViewModel: ObservableObject {
 
     // MARK: - Submit Custom Card to GitHub
 
-    func submitCustomCard(name: String, issuer: String, country: String, image: UIImage) {
+    func submitCustomCard(name: String, image: UIImage) {
         isSubmitting = true
         Task {
-            let result = await GitHubService.submitCustomCard(name: name, issuer: issuer, country: country, image: image)
+            let result = await GitHubService.submitCustomCard(name: name, image: image)
             isSubmitting = false
             downloadedMessage = result.message
         }
@@ -707,8 +707,6 @@ struct CommunityView: View {
     @State private var pickedImage = UIImage()
     @State private var showNamePrompt = false
     @State private var customCardName = ""
-    @State private var customIssuer = ""
-    @State private var customCountry = ""
 
     var body: some View {
         ZStack {
@@ -881,34 +879,23 @@ struct CommunityView: View {
         .onChange(of: pickedImage) { img in
             if img.size != .zero {
                 customCardName = ""
-                customIssuer = ""
-                customCountry = ""
                 showNamePrompt = true
             }
         }
-        .sheet(isPresented: $showNamePrompt) {
-            SubmitCardSheet(
-                cardName: $customCardName,
-                issuer: $customIssuer,
-                country: $customCountry,
-                isSubmitting: vm.isSubmitting,
-                onSubmit: {
-                    let name = customCardName.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let issuer = customIssuer.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let country = customCountry.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !name.isEmpty, !issuer.isEmpty, !country.isEmpty else { return }
-                    guard !vm.isSubmitting else { return }
-                    vm.submitCustomCard(name: name, issuer: issuer, country: country, image: pickedImage)
-                    pickedImage = UIImage()
-                    showNamePrompt = false
-                },
-                onCancel: {
-                    pickedImage = UIImage()
-                    showNamePrompt = false
-                }
-            )
-            .presentationDetents([.medium])
-            .interactiveDismissDisabled()
+        .alert(L("custom_name_title"), isPresented: $showNamePrompt) {
+            TextField(L("custom_name_placeholder"), text: $customCardName)
+            Button(L("custom_submit_send")) {
+                let name = customCardName.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !name.isEmpty else { return }
+                guard !vm.isSubmitting else { return }
+                vm.submitCustomCard(name: name, image: pickedImage)
+                pickedImage = UIImage()
+            }
+            Button(L("card_cancel"), role: .cancel) {
+                pickedImage = UIImage()
+            }
+        } message: {
+            Text(L("custom_name_message"))
         }
     }
 }
