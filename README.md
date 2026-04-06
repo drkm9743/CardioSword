@@ -89,6 +89,8 @@ The exploit execution could trigger reboots on your device, don't consider it as
 
 Alternatively, exploit execution could take from seconds to minutes, be patient.
 
+iOS 17.1.1 users reported the upload custom cards feature does nothing, fixing soon.
+
 ## Architecture
 
 ```
