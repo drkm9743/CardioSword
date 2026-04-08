@@ -106,5 +106,14 @@
     "category": "Custom",
     "imageURL": "https://raw.githubusercontent.com/drkm9743/CardioDS/main/community-cards/images/paisa-barbad-meme-16.jpg",
     "author": "drkm9743"
+  },
+  {
+    "id": "classic-10",
+    "name": "Classic",
+    "issuer": "Raiffeisen Bank",
+    "country": "Serbia",
+    "category": "Raiffeisen Bank",
+    "imageURL": "https://raw.githubusercontent.com/drkm9743/CardioDS/main/community-cards/images/classic-10.jpg",
+    "author": "drkm9743"
   }
 ]
