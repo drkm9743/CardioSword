@@ -70,5 +70,14 @@
     "category": "Custom",
     "imageURL": "https://raw.githubusercontent.com/drkm9743/CardioDS/main/community-cards/images/fortnite-reboot-card-13.jpg",
     "author": "drkm9743"
+  },
+  {
+    "id": "sand-dollar-14",
+    "name": "Sand Dollar",
+    "issuer": "Custom",
+    "country": "N/A",
+    "category": "Custom",
+    "imageURL": "https://raw.githubusercontent.com/drkm9743/CardioDS/main/community-cards/images/sand-dollar-14.jpg",
+    "author": "drkm9743"
   }
 ]
