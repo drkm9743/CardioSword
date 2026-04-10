@@ -191,7 +191,9 @@ struct MyCardsView: View {
                         }
                         .padding(.horizontal, 16)
                     } else {
-                        Text("mycards_no_device_cards")
+                        Text(exploit.prefersDirectAccessMode
+                             ? "No device cards detected. Scan Wallet from the Cards tab first."
+                             : L("mycards_no_device_cards"))
                             .font(.system(size: 13))
                             .foregroundColor(.orange)
                             .padding(.horizontal, 16)
@@ -266,21 +268,31 @@ struct MyCardsView: View {
             get: { cardToSubmit != nil },
             set: { if !$0 { cardToSubmit = nil } }
         )) {
-            SubmitCardSheet(
-                cardName: $submitName,
-                issuer: $submitIssuer,
-                country: $submitCountry,
-                isSubmitting: vm.isSubmitting,
-                onSubmit: {
-                    if let card = cardToSubmit {
-                        vm.submitToGitHub(card, name: submitName, issuer: submitIssuer, country: submitCountry)
-                        cardToSubmit = nil
-                    }
-                },
-                onCancel: { cardToSubmit = nil }
-            )
-            .presentationDetents([.medium])
-            .interactiveDismissDisabled()
+            submitCardSheet
+        }
+    }
+
+    @ViewBuilder
+    private var submitCardSheet: some View {
+        let content = SubmitCardSheet(
+            cardName: $submitName,
+            issuer: $submitIssuer,
+            country: $submitCountry,
+            isSubmitting: vm.isSubmitting,
+            onSubmit: {
+                if let card = cardToSubmit {
+                    vm.submitToGitHub(card, name: submitName, issuer: submitIssuer, country: submitCountry)
+                    cardToSubmit = nil
+                }
+            },
+            onCancel: { cardToSubmit = nil }
+        )
+        .interactiveDismissDisabled()
+
+        if #available(iOS 16.0, *) {
+            content.presentationDetents([.medium])
+        } else {
+            content
         }
     }
 
@@ -450,7 +462,7 @@ struct SubmitCardSheet: View {
                         } else {
                             Text(L("custom_submit_send"))
                                 .frame(maxWidth: .infinity)
-                                .fontWeight(.semibold)
+                                .font(.system(size: 17, weight: .semibold))
                         }
                     }
                     .disabled(cardName.trimmingCharacters(in: .whitespaces).isEmpty

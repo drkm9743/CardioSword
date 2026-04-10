@@ -1,4 +1,4 @@
-name: Build iOS IPA (unsigned)
+name: Build iOS Packages
 
 on:
   workflow_dispatch:
@@ -8,6 +8,7 @@ on:
     paths:
       - "card-test/**"
       - "Cardio.xcodeproj/**"
+      - "CardioTrollStore.entitlements"
       - ".github/workflows/build-ios.yml"
 
 jobs:
@@ -23,6 +24,9 @@ jobs:
           xcodebuild -resolvePackageDependencies \
             -project Cardio.xcodeproj \
             -scheme Cardio
+
+      - name: Install ldid
+        run: brew install ldid
 
       - name: Build app (unsigned)
         run: |
@@ -72,11 +76,67 @@ jobs:
           cp -R "$APP_PATH" Payload/
           zip -qry Cardio-unsigned.ipa Payload
 
+      - name: Package TrollStore TIPA
+        run: |
+          set -euo pipefail
+
+          APP_PATH="build/Build/Products/Release-iphoneos/Cardio.app"
+          ENTITLEMENTS_PATH="CardioTrollStore.entitlements"
+
+          if [ ! -d "$APP_PATH" ]; then
+            echo "App not found at $APP_PATH"
+            find build -maxdepth 5 -type d -name "*.app" || true
+            exit 1
+          fi
+
+          if [ ! -f "$ENTITLEMENTS_PATH" ]; then
+            echo "Entitlements file not found at $ENTITLEMENTS_PATH"
+            exit 1
+          fi
+
+          APP_BUNDLE_NAME="$(basename "$APP_PATH")"
+
+          rm -rf Payload-trollstore
+          mkdir -p Payload-trollstore/Payload
+          cp -R "$APP_PATH" Payload-trollstore/Payload/
+
+          STAGED_APP_PATH="Payload-trollstore/Payload/$APP_BUNDLE_NAME"
+          APP_EXECUTABLE_NAME="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$STAGED_APP_PATH/Info.plist")"
+          APP_EXECUTABLE_PATH="$STAGED_APP_PATH/$APP_EXECUTABLE_NAME"
+
+          find "$STAGED_APP_PATH" -type f -print0 | while IFS= read -r -d '' candidate; do
+            if ! file -b "$candidate" | grep -q '^Mach-O'; then
+              continue
+            fi
+
+            if [ "$candidate" = "$APP_EXECUTABLE_PATH" ]; then
+              continue
+            fi
+
+            ldid -S "$candidate"
+          done
+
+          ldid -S"$ENTITLEMENTS_PATH" "$APP_EXECUTABLE_PATH"
+          ldid -e "$APP_EXECUTABLE_PATH" > cardio-trollstore-entitlements.plist
+
+          (
+            cd Payload-trollstore
+            zip -qry ../Cardio-trollstore.tipa Payload
+          )
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: cardio-unsigned-ipa
           path: Cardio-unsigned.ipa
+
+      - name: Upload TrollStore artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cardio-trollstore-tipa
+          path: |
+            Cardio-trollstore.tipa
+            cardio-trollstore-entitlements.plist
 
       - name: Upload build logs
         if: always()

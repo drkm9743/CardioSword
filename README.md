@@ -8,6 +8,7 @@
 
 - **Apple Wallet card customization** — Replace card background images directly from your photo library or the Files app
 - **Card number editor** — Read and edit the last 4 digits displayed on your card (primaryAccountSuffix in pass.json), with automatic backup/restore
+- **Metadata editor overlay** — Open a built-in JSON/text editor for `pass.json` and nearby `.strings` files, with per-file backup/restore
 - **Auto kernproc offset resolution** — Downloads your device's kernelcache and resolves kernel offsets via XPF (XNU PatchFinder)
 - **Integrated exploit engine** — DarkSword + sandbox escape, all built-in
 - **Card management** — Backup, restore, rename cards with nicknames
@@ -72,8 +73,9 @@ This downloads `libxpf.dylib` and `libgrabkernel2.dylib` from Lara's repository 
 2. The app auto-resolves kernel offsets on first run (or tap **Resolve Offsets** in the Exploit tab)
 3. Tap **Run All** to run DarkSword + sandbox escape
 4. Go to the **Cards** tab, tap a card, and pick a replacement image from your photo library or the Files app
-5. Tap the **Number** button to edit the last 4 digits shown on the card
-6. Changes persist on disk; after reboot, run **Run All** again
+5. Tap **Metadata** to edit `pass.json` or the card’s `.strings` files directly in-app
+6. Tap the **Number** button to edit the last 4 digits shown on the card
+7. Changes persist on disk; after reboot, run **Run All** again
 
 ## Troubleshooting
 

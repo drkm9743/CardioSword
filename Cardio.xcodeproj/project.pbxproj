@@ -24,13 +24,13 @@
 		D200000128E9000000BBB001 /* offsets.m in Sources */ = {isa = PBXBuildFile; fileRef = D200000228E9000000BBB001 /* offsets.m */; };
 		D200001028E9000000BBB010 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = D200001128E9000000BBB010 /* Localizable.strings */; };
 		D300000128EA000000CCC001 /* DocumentPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = D300000228EA000000CCC001 /* DocumentPicker.swift */; };
-		D700000128EE000000111001 /* AssetDocumentPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = D700000228EE000000111001 /* AssetDocumentPicker.swift */; };
 		D400000128EB000000DDD001 /* lib/libxpf.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = D400000228EB000000DDD001 /* lib/libxpf.dylib */; };
 		D400000328EB000000DDD001 /* lib/libxpf.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D400000228EB000000DDD001 /* lib/libxpf.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D400000428EB000000DDD001 /* lib/libgrabkernel2.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = D400000528EB000000DDD001 /* lib/libgrabkernel2.dylib */; };
 		D400000628EB000000DDD001 /* lib/libgrabkernel2.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D400000528EB000000DDD001 /* lib/libgrabkernel2.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D500000128EC000000EEE001 /* LanguageManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D500000228EC000000EEE001 /* LanguageManager.swift */; };
 		D600000128ED000000FFF001 /* GitHubService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D600000228ED000000FFF001 /* GitHubService.swift */; };
+		D700000128EE000000111001 /* AssetDocumentPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = D700000228EE000000111001 /* AssetDocumentPicker.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -83,11 +83,11 @@
 		D200001828E9000000BBB017 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		D200001928E9000000BBB018 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/Localizable.strings; sourceTree = "<group>"; };
 		D300000228EA000000CCC001 /* DocumentPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentPicker.swift; sourceTree = "<group>"; };
-		D700000228EE000000111001 /* AssetDocumentPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetDocumentPicker.swift; sourceTree = "<group>"; };
 		D400000228EB000000DDD001 /* lib/libxpf.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = lib/libxpf.dylib; sourceTree = "<group>"; };
 		D400000528EB000000DDD001 /* lib/libgrabkernel2.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = lib/libgrabkernel2.dylib; sourceTree = "<group>"; };
 		D500000228EC000000EEE001 /* LanguageManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanguageManager.swift; sourceTree = "<group>"; };
 		D600000228ED000000FFF001 /* GitHubService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitHubService.swift; sourceTree = "<group>"; };
+		D700000228EE000000111001 /* AssetDocumentPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetDocumentPicker.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -183,6 +183,7 @@
 				8AA5371828E269E100146E99 /* Sources */,
 				8AA5371928E269E100146E99 /* Frameworks */,
 				D400000728EB000000DDD001 /* Embed Frameworks */,
+				D800000128EF000000222001 /* Re-sign Embedded Dylibs */,
 				8AA5371A28E269E100146E99 /* Resources */,
 			);
 			buildRules = (
@@ -251,6 +252,29 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		D800000128EF000000222001 /* Re-sign Embedded Dylibs */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/libxpf.dylib",
+				"$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/libgrabkernel2.dylib",
+			);
+			name = "Re-sign Embedded Dylibs";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"${CODE_SIGNING_ALLOWED}\" != \"YES\" ]; then\n  exit 0\nfi\n\nif [ -z \"${EXPANDED_CODE_SIGN_IDENTITY}\" ]; then\n  echo \"Skipping embedded dylib signing: no signing identity\"\n  exit 0\nfi\n\nFRAMEWORKS_DIR=\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}\"\nfor DYLIB in libxpf.dylib libgrabkernel2.dylib; do\n  DYLIB_PATH=\"${FRAMEWORKS_DIR}/${DYLIB}\"\n  if [ -f \"${DYLIB_PATH}\" ]; then\n    /usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --timestamp=none \"${DYLIB_PATH}\"\n  fi\ndone\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		8AA5371828E269E100146E99 /* Sources */ = {
@@ -348,7 +372,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -402,7 +426,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
@@ -423,7 +447,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1.0;
 				DEVELOPMENT_ASSET_PATHS = "\"card-test/Preview Content\"";
-				DEVELOPMENT_TEAM = 33ZDA25479;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "card-test/Info.plist";
@@ -436,7 +460,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = UIInterfaceOrientationPortrait;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -471,7 +495,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1.0;
 				DEVELOPMENT_ASSET_PATHS = "\"card-test/Preview Content\"";
-				DEVELOPMENT_TEAM = 33ZDA25479;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "card-test/Info.plist";
@@ -484,7 +508,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = UIInterfaceOrientationPortrait;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

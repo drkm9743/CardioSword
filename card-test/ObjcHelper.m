@@ -1,10 +1,43 @@
 #import <Foundation/Foundation.h>
+#import <Security/Security.h>
+#import <dirent.h>
+#import <fcntl.h>
+#import <sys/stat.h>
+#import <unistd.h>
 
 #import "ObjcHelper.h"
 #import "kexploit/kfs.h"
 
 void enumerateProcessesUsingBlock(void (^enumerator)(pid_t pid, NSString* executablePath, BOOL* stop));
 void killall(NSString* processName);
+
+typedef const struct CF_BRIDGED_TYPE(id) __SecTask *SecTaskRef;
+extern SecTaskRef SecTaskCreateFromSelf(CFAllocatorRef allocator);
+extern CFTypeRef _Nullable SecTaskCopyValueForEntitlement(SecTaskRef task, CFStringRef entitlement, CFErrorRef _Nullable * _Nullable error);
+
+static NSNumber * _Nullable cardioBoolFromEntitlementValue(CFTypeRef _Nullable value) {
+    if (value == NULL) {
+        return nil;
+    }
+
+    NSNumber *result = nil;
+    CFTypeID typeID = CFGetTypeID(value);
+    if (typeID == CFBooleanGetTypeID()) {
+        result = @(CFBooleanGetValue((CFBooleanRef)value));
+    } else if (typeID == CFNumberGetTypeID()) {
+        result = @(((__bridge NSNumber *)value).boolValue);
+    } else if (typeID == CFStringGetTypeID()) {
+        NSString *string = [(__bridge NSString *)value lowercaseString];
+        if ([string isEqualToString:@"true"] || [string isEqualToString:@"yes"] || [string isEqualToString:@"1"]) {
+            result = @YES;
+        } else if ([string isEqualToString:@"false"] || [string isEqualToString:@"no"] || [string isEqualToString:@"0"]) {
+            result = @NO;
+        }
+    }
+
+    CFRelease(value);
+    return result;
+}
 
 @implementation ObjcHelper
 
@@ -85,6 +118,34 @@ void killall(NSString* processName);
     return kfs_file_size_nc(path.UTF8String);
 }
 
+-(NSArray<NSString *> *)directListDirectory:(NSString *)path {
+    if (path.length == 0) {
+        return @[];
+    }
+
+    DIR *dir = opendir(path.fileSystemRepresentation);
+    if (dir == NULL) {
+        return @[];
+    }
+
+    NSMutableArray<NSString *> *results = [NSMutableArray array];
+    struct dirent *entry = NULL;
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_name[0] == '.' &&
+            (entry->d_name[1] == '\0' || (entry->d_name[1] == '.' && entry->d_name[2] == '\0'))) {
+            continue;
+        }
+
+        NSString *name = [NSString stringWithUTF8String:entry->d_name];
+        if (name.length > 0) {
+            [results addObject:name];
+        }
+    }
+
+    closedir(dir);
+    return results;
+}
+
 -(NSData * _Nullable)kfsReadFile:(NSString *)path maxSize:(int64_t)maxSize {
     if (path.length == 0 || maxSize <= 0) return nil;
 
@@ -104,6 +165,63 @@ void killall(NSString* processName);
     NSData *data = [NSData dataWithBytes:buf length:(NSUInteger)n];
     free(buf);
     return data;
+}
+
+-(NSData * _Nullable)directReadFile:(NSString *)path maxSize:(int64_t)maxSize {
+    if (path.length == 0 || maxSize <= 0) {
+        return nil;
+    }
+
+    int fd = open(path.fileSystemRepresentation, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+        return nil;
+    }
+
+    NSMutableData *data = [NSMutableData data];
+    const size_t chunkSize = 64 * 1024;
+    uint8_t buffer[chunkSize];
+    int64_t remaining = maxSize;
+
+    while (remaining > 0) {
+        size_t requested = (size_t)MIN((int64_t)sizeof(buffer), remaining);
+        ssize_t readCount = read(fd, buffer, requested);
+        if (readCount <= 0) {
+            break;
+        }
+
+        [data appendBytes:buffer length:(NSUInteger)readCount];
+        remaining -= readCount;
+    }
+
+    close(fd);
+    return data.length > 0 ? data : nil;
+}
+
+-(NSDictionary<NSString *, NSNumber *> *)runtimeEntitlementFlags {
+    SecTaskRef task = SecTaskCreateFromSelf(kCFAllocatorDefault);
+    if (task == NULL) {
+        return @{};
+    }
+
+    NSArray<NSString *> *keys = @[
+        @"com.apple.private.security.no-sandbox",
+        @"com.apple.private.security.no-container",
+        @"com.apple.private.security.container-required",
+        @"platform-application"
+    ];
+
+    NSMutableDictionary<NSString *, NSNumber *> *flags = [NSMutableDictionary dictionaryWithCapacity:keys.count];
+    for (NSString *key in keys) {
+        NSNumber *value = cardioBoolFromEntitlementValue(
+            SecTaskCopyValueForEntitlement(task, (__bridge CFStringRef)key, NULL)
+        );
+        if (value != nil) {
+            flags[key] = value;
+        }
+    }
+
+    CFRelease(task);
+    return flags;
 }
 
 // MARK: - TSUtil

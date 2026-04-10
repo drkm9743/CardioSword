@@ -10,6 +10,7 @@ struct ContentView: View {
     @State private var paymentCards: [Card] = []
     @State private var walletPasses: [Card] = []
     @State private var selectedCardsSection: WalletDisplayCategory = .paymentCards
+    @State private var bundleEditorCard: Card?
     @State private var detectedCardsRoot = "not-detected"
     @State private var offsetInput = ""
     @State private var isLoadingCards = false
@@ -496,7 +497,9 @@ struct ContentView: View {
         let header = [
             "CardioSword diagnostic export",
             "timestamp=\(timestamp)",
+            "runtime_mode=\(exploit.prefersDirectAccessMode ? "direct" : "exploit")",
             "status=\(exploit.statusMessage)",
+            exploit.entitlementSummary,
             "darksword_ready=\(exploit.darkswordReady)",
             "sandbox_escaped=\(exploit.sandboxEscaped)",
             "kernproc_offset=\(exploit.hasKernprocOffset ? String(format: "0x%llx", exploit.kernprocOffset) : "missing")",
@@ -656,8 +659,10 @@ struct ContentView: View {
     }
 
     private func refreshExploitTabState() {
-        exploit.refreshKernprocOffsetState()
         exploit.refreshAccessProbe()
+        if !exploit.prefersDirectAccessMode {
+            exploit.refreshKernprocOffsetState()
+        }
         detectedCardsRoot = exploit.detectedCardsRootPath ?? "not-detected"
         refreshOffsetInputFromState()
     }
@@ -665,7 +670,9 @@ struct ContentView: View {
     private func recheckAndReload() {
         hasAttemptedInitialScan = true
         exploit.refreshAccessProbe()
-        exploit.refreshKernprocOffsetState()
+        if !exploit.prefersDirectAccessMode {
+            exploit.refreshKernprocOffsetState()
+        }
         loadCards()
     }
 
@@ -734,7 +741,7 @@ struct ContentView: View {
                         }
                         .foregroundColor(.cyan)
 
-                        Button("Open Exploit") {
+                        Button(exploit.accessTabTitle) {
                             selectedTab = 3
                         }
                         .foregroundColor(.white)
@@ -759,10 +766,17 @@ struct ContentView: View {
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 24)
 
-                        Button("Open Exploit") {
-                            selectedTab = 3
+                        if !exploit.prefersDirectAccessMode {
+                            Button("Open Exploit") {
+                                selectedTab = 3
+                            }
+                            .foregroundColor(.cyan)
+                        } else {
+                            Button(exploit.accessTabTitle) {
+                                selectedTab = 3
+                            }
+                            .foregroundColor(.cyan)
                         }
-                        .foregroundColor(.cyan)
 
                         Button("Retry") {
                             recheckAndReload()
@@ -816,7 +830,13 @@ struct ContentView: View {
 
                     TabView {
                         ForEach(visibleCards) { card in
-                            CardView(card: card, exploit: exploit)
+                            CardView(
+                                card: card,
+                                exploit: exploit,
+                                onOpenBundleEditor: { selectedCard in
+                                    bundleEditorCard = selectedCard
+                                }
+                            )
                         }
                     }
                     .tabViewStyle(PageTabViewStyle(indexDisplayMode: .always))
@@ -953,6 +973,59 @@ struct ContentView: View {
     }
 
     // MARK: - Exploit Tab
+
+    private var directAccessTab: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Direct Access")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(.white)
+
+                    Text(exploit.statusMessage)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(exploit.canApplyCardChanges ? .green : .orange)
+
+                    Group {
+                        Text("runtime_mode=direct")
+                        Text(exploit.entitlementSummary)
+                        Text("cards_root=\(detectedCardsRoot)")
+                    }
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.8))
+
+                    HStack(spacing: 10) {
+                        Button("Retry Access Probe") {
+                            refreshExploitTabState()
+                        }
+                        .foregroundColor(.cyan)
+
+                        Button("Scan Wallet") {
+                            recheckAndReload()
+                        }
+                        .foregroundColor(.white)
+                    }
+
+                    Button("exploit_copy_logs") {
+                        UIPasteboard.general.string = buildLogExportText()
+                        exploit.addLog("[scan] logs copied to clipboard")
+                    }
+                    .foregroundColor(.white)
+
+                    Text(exploit.logText.isEmpty ? L("exploit_no_logs") : exploit.logText)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(Color.green.opacity(0.9))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(8)
+                        .background(Color.white.opacity(0.06))
+                        .cornerRadius(8)
+                }
+                .padding(14)
+            }
+        }
+    }
 
     private var exploitTab: some View {
         ZStack {
@@ -1127,14 +1200,18 @@ struct ContentView: View {
 
             Group {
                 if selectedTab == 3 {
-                    exploitTab
+                    if exploit.prefersDirectAccessMode {
+                        directAccessTab
+                    } else {
+                        exploitTab
+                    }
                 } else {
                     Color.black.ignoresSafeArea()
                 }
             }
                 .tabItem {
-                    Image(systemName: "terminal.fill")
-                    Text("tab_exploit")
+                    Image(systemName: exploit.accessTabSystemImage)
+                    Text(exploit.accessTabTitle)
                 }
                 .tag(3)
         }
@@ -1151,13 +1228,23 @@ struct ContentView: View {
             refreshOffsetInputFromState()
             normalizeSelectedCardsSection()
         }
-        .onChange(of: selectedTab) { _, newTab in
+        .onChange(of: selectedTab) { newTab in
             if newTab == 3 {
                 refreshExploitTabState()
             }
         }
-        .onChange(of: hideArchivedWalletItems) { _, _ in
+        .onChange(of: hideArchivedWalletItems) { _ in
             normalizeSelectedCardsSection()
+        }
+        .sheet(item: $bundleEditorCard) { card in
+            CardView(
+                card: card,
+                exploit: exploit,
+                embeddedBundleEditor: true,
+                onDismissBundleEditor: {
+                    bundleEditorCard = nil
+                }
+            )
         }
     }
 }

@@ -28,6 +28,9 @@ NS_ASSUME_NONNULL_BEGIN
 -(NSArray<NSString *> *)kfsListDirectory:(NSString *)path;
 -(int64_t)kfsFileSizeNC:(NSString *)path;
 -(NSData * _Nullable)kfsReadFile:(NSString *)path maxSize:(int64_t)maxSize;
+-(NSArray<NSString *> *)directListDirectory:(NSString *)path;
+-(NSData * _Nullable)directReadFile:(NSString *)path maxSize:(int64_t)maxSize;
+-(NSDictionary<NSString *, NSNumber *> *)runtimeEntitlementFlags;
 @end
 
 NS_ASSUME_NONNULL_END

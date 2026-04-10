@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import PDFKit
 
 enum CardKind {
@@ -299,12 +300,30 @@ private struct WalletPassPreviewData {
     let auxiliaryFields: [WalletPassField]
 }
 
+private enum WalletCacheArtifact: String, CaseIterable {
+    case frontFace = "FrontFace"
+    case preview = "Preview"
+    case placeHolder = "PlaceHolder"
+}
+
+private struct PaymentCardCacheRenderData {
+    let brandName: String
+    let productName: String?
+    let suffix: String?
+    let foregroundColor: UIColor
+    let labelColor: UIColor
+    let backgroundColor: UIColor
+}
+
 private let helper = ObjcHelper()
 
 struct CardView: View {
     let fm = FileManager.default
     let card: Card
     @ObservedObject var exploit: ExploitManager
+    var embeddedBundleEditor = false
+    var onOpenBundleEditor: ((Card) -> Void)? = nil
+    var onDismissBundleEditor: (() -> Void)? = nil
 
     @State private var cardImage = UIImage()
     @State private var bundleAssetImage = UIImage()
@@ -318,12 +337,12 @@ struct CardView: View {
     @State private var errorMessage = ""
     @State private var imageVersion = 0          // bump to force re-render
     @State private var showSaved = false
+    @State private var successMessage = ""
     @State private var showNicknameEditor = false
     @State private var nicknameInput = ""
     @State private var showCardNumberEditor = false
     @State private var cardNumberInput = ""
     @State private var currentCardNumber = ""
-    @State private var showMetadataEditor = false
     @State private var metadataFiles: [CardMetadataFile] = []
     @State private var selectedMetadataPath = ""
     @State private var metadataEditorText = ""
@@ -368,6 +387,25 @@ struct CardView: View {
 
     private var selectedMetadataFile: CardMetadataFile? {
         metadataFiles.first { $0.path == selectedMetadataPath }
+    }
+
+    private var presentedMetadataFile: CardMetadataFile? {
+        selectedMetadataFile ?? metadataFiles.first
+    }
+
+    private var metadataPickerSelection: Binding<String> {
+        Binding(
+            get: {
+                presentedMetadataFile?.path ?? ""
+            },
+            set: { newPath in
+                if let file = metadataFiles.first(where: { $0.path == newPath }) {
+                    selectMetadataFile(file)
+                } else {
+                    selectedMetadataPath = newPath
+                }
+            }
+        )
     }
 
     private func relativeBundlePath(for path: String) -> String {
@@ -526,6 +564,241 @@ struct CardView: View {
         return loadImage(atPath: card.imagePath)
     }
 
+    private func uiColor(from value: Any?, fallback: UIColor) -> UIColor {
+        if let value = value as? String {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if trimmed.hasPrefix("#") {
+                let hex = String(trimmed.dropFirst())
+                if hex.count == 6, let number = UInt64(hex, radix: 16) {
+                    return UIColor(
+                        red: CGFloat((number >> 16) & 0xff) / 255.0,
+                        green: CGFloat((number >> 8) & 0xff) / 255.0,
+                        blue: CGFloat(number & 0xff) / 255.0,
+                        alpha: 1.0
+                    )
+                }
+            }
+
+            let digitSet = CharacterSet(charactersIn: "0123456789., ")
+            if trimmed.lowercased().hasPrefix("rgb"),
+               let start = trimmed.firstIndex(of: "("),
+               let end = trimmed.lastIndex(of: ")") {
+                let componentsString = trimmed[trimmed.index(after: start)..<end]
+                let sanitized = String(componentsString).components(separatedBy: digitSet.inverted).joined()
+                let components = sanitized
+                    .split(separator: ",")
+                    .compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+
+                if components.count >= 3 {
+                    let alpha = components.count >= 4 ? components[3] : 1.0
+                    return UIColor(
+                        red: components[0] / 255.0,
+                        green: components[1] / 255.0,
+                        blue: components[2] / 255.0,
+                        alpha: alpha > 1.0 ? alpha / 255.0 : alpha
+                    )
+                }
+            }
+        }
+
+        return fallback
+    }
+
+    private func loadPaymentCardCacheRenderData() -> PaymentCardCacheRenderData {
+        let json = readPassJson().flatMap { data in
+            try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        } ?? [:]
+
+        let brandName = ((json["logoText"] as? String)
+            ?? (json["organizationName"] as? String)
+            ?? card.bundleName)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawProductName = (json["description"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let productName = rawProductName?.localizedCaseInsensitiveCompare(brandName) == .orderedSame ? nil : rawProductName
+
+        return PaymentCardCacheRenderData(
+            brandName: brandName,
+            productName: productName,
+            suffix: (json["primaryAccountSuffix"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+            foregroundColor: uiColor(from: json["foregroundColor"], fallback: .white),
+            labelColor: uiColor(from: json["labelColor"], fallback: .white),
+            backgroundColor: uiColor(from: json["backgroundColor"], fallback: UIColor(white: 0.12, alpha: 1))
+        )
+    }
+
+    private func paymentCardCacheRenderSize(for baseImage: UIImage?) -> CGSize {
+        if let cgImage = baseImage?.cgImage {
+            return CGSize(width: cgImage.width, height: cgImage.height)
+        }
+
+        if let targetPath, targetPath.lowercased().contains("@3x") {
+            return CGSize(width: 2304, height: 1452)
+        }
+
+        return CGSize(width: 1536, height: 969)
+    }
+
+    private func drawPaymentCardText(
+        _ text: String,
+        in rect: CGRect,
+        color: UIColor,
+        font: UIFont,
+        alignment: NSTextAlignment,
+        context: CGContext
+    ) {
+        let shadow = NSShadow()
+        shadow.shadowBlurRadius = max(4, rect.height * 0.08)
+        shadow.shadowOffset = CGSize(width: 0, height: max(2, rect.height * 0.02))
+        shadow.shadowColor = UIColor.black.withAlphaComponent(0.35)
+
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = alignment
+        paragraphStyle.lineBreakMode = .byTruncatingTail
+
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: color,
+            .paragraphStyle: paragraphStyle,
+            .shadow: shadow
+        ]
+
+        context.saveGState()
+        NSAttributedString(string: text, attributes: attributes).draw(
+            with: rect,
+            options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine],
+            context: nil
+        )
+        context.restoreGState()
+    }
+
+    private func renderedPaymentCardCacheImage() -> UIImage? {
+        guard card.kind == .paymentCard else {
+            return nil
+        }
+
+        let baseImage = paymentCardPreviewImage ?? loadPaymentCardPreviewImage()
+        let renderData = loadPaymentCardCacheRenderData()
+        let renderSize = paymentCardCacheRenderSize(for: baseImage)
+
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        format.opaque = true
+
+        let renderer = UIGraphicsImageRenderer(size: renderSize, format: format)
+        return renderer.image { rendererContext in
+            let context = rendererContext.cgContext
+            let bounds = CGRect(origin: .zero, size: renderSize)
+
+            context.setFillColor(renderData.backgroundColor.cgColor)
+            context.fill(bounds)
+
+            if let baseImage {
+                baseImage.draw(in: bounds)
+            }
+
+            if let topGradient = CGGradient(
+                colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                colors: [
+                    UIColor.black.withAlphaComponent(0.18).cgColor,
+                    UIColor.clear.cgColor
+                ] as CFArray,
+                locations: [0, 1]
+            ) {
+                context.drawLinearGradient(
+                    topGradient,
+                    start: CGPoint(x: bounds.midX, y: 0),
+                    end: CGPoint(x: bounds.midX, y: bounds.height * 0.2),
+                    options: []
+                )
+            }
+
+            if let bottomGradient = CGGradient(
+                colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                colors: [
+                    UIColor.clear.cgColor,
+                    UIColor.black.withAlphaComponent(0.28).cgColor
+                ] as CFArray,
+                locations: [0, 1]
+            ) {
+                context.drawLinearGradient(
+                    bottomGradient,
+                    start: CGPoint(x: bounds.midX, y: bounds.height * 0.72),
+                    end: CGPoint(x: bounds.midX, y: bounds.height),
+                    options: []
+                )
+            }
+
+            let leftInset = bounds.width * 0.065
+            let rightInset = bounds.width * 0.065
+
+            let brandRect = CGRect(
+                x: leftInset,
+                y: bounds.height * 0.07,
+                width: bounds.width - leftInset - rightInset,
+                height: bounds.height * 0.14
+            )
+            drawPaymentCardText(
+                renderData.brandName.uppercased(),
+                in: brandRect,
+                color: renderData.foregroundColor,
+                font: .systemFont(ofSize: bounds.height * 0.082, weight: .bold),
+                alignment: .left,
+                context: context
+            )
+
+            if let productName = renderData.productName, !productName.isEmpty {
+                let productRect = CGRect(
+                    x: leftInset,
+                    y: brandRect.maxY + bounds.height * 0.01,
+                    width: bounds.width * 0.58,
+                    height: bounds.height * 0.1
+                )
+                drawPaymentCardText(
+                    productName,
+                    in: productRect,
+                    color: renderData.labelColor.withAlphaComponent(0.94),
+                    font: .systemFont(ofSize: bounds.height * 0.046, weight: .semibold),
+                    alignment: .left,
+                    context: context
+                )
+            }
+
+            if let suffix = renderData.suffix, !suffix.isEmpty {
+                let labelRect = CGRect(
+                    x: leftInset,
+                    y: bounds.height * 0.82,
+                    width: bounds.width * 0.22,
+                    height: bounds.height * 0.05
+                )
+                drawPaymentCardText(
+                    "CARD",
+                    in: labelRect,
+                    color: renderData.labelColor.withAlphaComponent(0.88),
+                    font: .systemFont(ofSize: bounds.height * 0.032, weight: .semibold),
+                    alignment: .left,
+                    context: context
+                )
+
+                let suffixRect = CGRect(
+                    x: leftInset,
+                    y: labelRect.maxY + bounds.height * 0.006,
+                    width: bounds.width * 0.3,
+                    height: bounds.height * 0.08
+                )
+                drawPaymentCardText(
+                    "•••• \(suffix)",
+                    in: suffixRect,
+                    color: renderData.labelColor,
+                    font: .monospacedDigitSystemFont(ofSize: bounds.height * 0.055, weight: .bold),
+                    alignment: .left,
+                    context: context
+                )
+            }
+        }
+    }
+
     private func assetCandidateNames(for baseName: String) -> [String] {
         let fileManager = FileManager.default
         let exactCandidates = [
@@ -639,6 +912,13 @@ struct CardView: View {
         }
 
         for variant in pathVariants(for: path) {
+            let entries = helper.directListDirectory(variant)
+            if !entries.isEmpty {
+                return entries
+            }
+        }
+
+        for variant in pathVariants(for: path) {
             let entries = helper.kfsListDirectory(variant)
             if !entries.isEmpty {
                 return entries
@@ -656,6 +936,12 @@ struct CardView: View {
         }
 
         for variant in pathVariants(for: path) {
+            if access(variant, F_OK) == 0 {
+                return true
+            }
+        }
+
+        for variant in pathVariants(for: path) {
             if helper.kfsFileSizeNC(variant) >= 0 {
                 return true
             }
@@ -667,6 +953,16 @@ struct CardView: View {
     private func readFileData(at path: String, maxSize: Int64 = 1024 * 1024) -> Data? {
         for variant in pathVariants(for: path) {
             if let data = fm.contents(atPath: variant) {
+                return data
+            }
+        }
+
+        for variant in pathVariants(for: path) {
+            _ = access(variant, R_OK)
+        }
+
+        for variant in pathVariants(for: path) {
+            if let data = helper.directReadFile(variant, maxSize: maxSize) {
                 return data
             }
         }
@@ -1065,33 +1361,79 @@ struct CardView: View {
             return
         }
 
+        if loadMetadataEditorText(for: file) {
+            return
+        }
+
+        // Some protected bundle files only become readable a tick later after the initial directory walk.
+        DispatchQueue.main.async {
+            guard self.embeddedBundleEditor,
+                  self.selectedMetadataPath == file.path else {
+                return
+            }
+
+            if !self.loadMetadataEditorText(for: file) {
+                self.errorMessage = "Could not read \(file.relativePath)."
+                self.showError = true
+            }
+        }
+    }
+
+    private func loadMetadataEditorText(for file: CardMetadataFile) -> Bool {
         guard let data = readFileData(at: file.path),
               let decoded = decodeText(data) else {
-            errorMessage = "Could not read \(file.relativePath)."
-            showError = true
-            return
+            return false
         }
 
         metadataEditorText = decoded.text
         metadataEditorEncoding = decoded.encoding
+        return true
     }
 
-    private func openMetadataEditor() {
-        if !guardWriteAccessOrShowError() {
+    private func ensureMetadataSelection() {
+        guard selectedMetadataFile == nil, let fallback = metadataFiles.first else {
+            return
+        }
+        selectMetadataFile(fallback)
+    }
+
+    private func warmMetadataEditorAccess() {
+        for root in editableBundleRoots() {
+            for variant in pathVariants(for: root.path) {
+                _ = access(variant, F_OK)
+                _ = helper.directListDirectory(variant)
+                _ = helper.kfsListDirectory(variant)
+
+                let passJsonCandidate = joinPath(variant, "pass.json")
+                _ = helper.directReadFile(passJsonCandidate, maxSize: 8 * 1024)
+                _ = helper.kfsReadFile(passJsonCandidate, maxSize: 8 * 1024)
+            }
+        }
+    }
+
+    private func prepareMetadataEditorState(using discoveredFiles: [CardMetadataFile]) {
+        metadataFiles = discoveredFiles
+        let preferredFile = discoveredFiles.first { $0.relativePath == "pass.json" } ?? discoveredFiles[0]
+        selectMetadataFile(preferredFile)
+    }
+
+    private func prepareMetadataEditor(attempt: Int = 0) {
+        let discoveredFiles = discoverMetadataFiles()
+        if !discoveredFiles.isEmpty {
+            prepareMetadataEditorState(using: discoveredFiles)
             return
         }
 
-        let discoveredFiles = discoverMetadataFiles()
-        guard !discoveredFiles.isEmpty else {
+        guard attempt < 2 else {
             errorMessage = "No editable bundle files were found for this card."
             showError = true
             return
         }
 
-        metadataFiles = discoveredFiles
-        let preferredFile = discoveredFiles.first { $0.relativePath == "pass.json" } ?? discoveredFiles[0]
-        selectMetadataFile(preferredFile)
-        showMetadataEditor = true
+        warmMetadataEditorAccess()
+        DispatchQueue.main.async {
+            self.prepareMetadataEditor(attempt: attempt + 1)
+        }
     }
 
     private func validateMetadataEditorText(for file: CardMetadataFile) throws {
@@ -1314,6 +1656,182 @@ struct CardView: View {
         }
     }
 
+    private func ensureWritableCacheRoot() throws -> String {
+        if let existing = cachePaths.first(where: { fileExists(atPath: $0) }) {
+            return existing
+        }
+
+        guard exploit.directWriteReady else {
+            throw NSError(
+                domain: "CardioCacheRenderer",
+                code: 3201,
+                userInfo: [NSLocalizedDescriptionKey: "Open the card in Wallet once so its cache bundle exists, then try Render Cache again."]
+            )
+        }
+
+        for cachePath in cachePaths {
+            do {
+                try fm.createDirectory(atPath: cachePath, withIntermediateDirectories: true, attributes: nil)
+                return cachePath
+            } catch {
+                continue
+            }
+        }
+
+        throw NSError(
+            domain: "CardioCacheRenderer",
+            code: 3202,
+            userInfo: [NSLocalizedDescriptionKey: "Could not create a writable Wallet cache bundle for this card."]
+        )
+    }
+
+    private func renderedCachePreviewImage() -> UIImage? {
+        switch card.kind {
+        case .paymentCard:
+            return renderedPaymentCardCacheImage()
+        case .walletPass:
+            return renderedWalletPassPreviewImage()
+        }
+    }
+
+    private func shouldRewriteCacheArtifact(named fileName: String) -> Bool {
+        let lower = fileName.lowercased()
+        guard fileName != ".", fileName != "..", !lower.hasSuffix(".backup") else {
+            return false
+        }
+
+        if WalletCacheArtifact.allCases.contains(where: { $0.rawValue.lowercased() == lower }) {
+            return true
+        }
+
+        let ext = (fileName as NSString).pathExtension.lowercased()
+        if ext == "json" || ext == "strings" || ext == "plist" {
+            return false
+        }
+
+        if lower.contains("frontface")
+            || lower.contains("preview")
+            || lower.contains("placeholder")
+            || lower.contains("background")
+            || lower.contains("thumbnail")
+            || lower.contains("strip") {
+            return true
+        }
+
+        return ext.isEmpty || ext == "png" || ext == "jpg" || ext == "jpeg"
+    }
+
+    private func cacheFileVariants(for fileName: String) -> [String] {
+        let fileURL = URL(fileURLWithPath: fileName)
+        let ext = fileURL.pathExtension
+        let stem = fileURL.deletingPathExtension().lastPathComponent
+        let baseStem = stem
+            .replacingOccurrences(of: "@2x", with: "", options: .caseInsensitive)
+            .replacingOccurrences(of: "@3x", with: "", options: .caseInsensitive)
+
+        let suffixes = ["", "@2x", "@3x"]
+        var variants: [String] = []
+        for suffix in suffixes {
+            let name = ext.isEmpty ? "\(baseStem)\(suffix)" : "\(baseStem)\(suffix).\(ext)"
+            if !variants.contains(name) {
+                variants.append(name)
+            }
+        }
+        return variants
+    }
+
+    private func candidateCacheFileNames() -> [String] {
+        var fileNames: [String] = []
+
+        if let backgroundFileName = card.backgroundFileName {
+            fileNames.append(contentsOf: cacheFileVariants(for: backgroundFileName))
+        }
+
+        if card.kind == .walletPass {
+            for assetName in ["strip.png", "background.png", "thumbnail.png"] {
+                fileNames.append(contentsOf: cacheFileVariants(for: assetName))
+            }
+        }
+
+        if card.kind == .paymentCard {
+            fileNames.append(contentsOf: WalletCacheArtifact.allCases.map(\.rawValue))
+        }
+
+        var unique: [String] = []
+        for fileName in fileNames where !unique.contains(fileName) {
+            unique.append(fileName)
+        }
+        return unique
+    }
+
+    private func appendUniquePath(_ path: String, to paths: inout [String]) {
+        if !paths.contains(path) {
+            paths.append(path)
+        }
+    }
+
+    private func isDirectory(at path: String) -> Bool {
+        var isDirectoryFlag = ObjCBool(false)
+        let exists = fm.fileExists(atPath: path, isDirectory: &isDirectoryFlag)
+        return exists && isDirectoryFlag.boolValue
+    }
+
+    private func cacheArtifactPaths(in cacheRoot: String) -> [String] {
+        var paths: [String] = []
+
+        for entry in listDirectory(cacheRoot) where shouldRewriteCacheArtifact(named: entry) {
+            let artifactPath = joinPath(cacheRoot, entry)
+            if !isDirectory(at: artifactPath) {
+                appendUniquePath(artifactPath, to: &paths)
+            }
+        }
+
+        for fileName in candidateCacheFileNames() {
+            appendUniquePath(joinPath(cacheRoot, fileName), to: &paths)
+        }
+
+        if paths.isEmpty {
+            for artifact in WalletCacheArtifact.allCases {
+                appendUniquePath(joinPath(cacheRoot, artifact.rawValue), to: &paths)
+            }
+        }
+
+        return paths
+    }
+
+    private func applyRenderedCache() {
+        guard guardWriteAccessOrShowError() else {
+            return
+        }
+
+        guard let renderedImage = renderedCachePreviewImage(),
+              let renderedData = renderedImage.pngData() else {
+            errorMessage = "Could not render cache artwork for this pass."
+            showError = true
+            return
+        }
+
+        do {
+            let cacheRoot = try ensureWritableCacheRoot()
+            let artifactPaths = cacheArtifactPaths(in: cacheRoot)
+
+            for artifactPath in artifactPaths {
+                if fileExists(atPath: artifactPath) {
+                    try backupFileIfNeeded(at: artifactPath, maxSize: max(Int64(renderedData.count * 2), 512 * 1024))
+                }
+                try exploit.overwriteWalletFile(targetPath: artifactPath, data: renderedData)
+            }
+
+            helper.refreshWalletServices()
+            reloadPreviewContent()
+            successMessage = "Applied \(artifactPaths.count) cache artifact(s). Reopen Wallet to compare the cached render."
+            showSaved = true
+        } catch {
+            errorMessage = error.localizedDescription
+            showError = true
+        }
+    }
+
     private func saveToDocuments() {
         let previewImage: UIImage?
         switch card.kind {
@@ -1338,6 +1856,7 @@ struct CardView: View {
         do {
             if let data = image.pngData() {
                 try data.write(to: dest, options: .atomic)
+                successMessage = ""
                 showSaved = true
             } else {
                 errorMessage = "Could not encode image"
@@ -1461,9 +1980,30 @@ struct CardView: View {
             return nil
         }
 
-        let renderer = ImageRenderer(content: walletPassFront(preview))
-        renderer.scale = UIScreen.main.scale
-        return renderer.uiImage
+        if #available(iOS 16.0, *) {
+            let renderer = ImageRenderer(content: walletPassFront(preview))
+            renderer.scale = UIScreen.main.scale
+            return renderer.uiImage
+        }
+
+        return renderWalletPassPreviewFallback(preview)
+    }
+
+    private func renderWalletPassPreviewFallback(_ preview: WalletPassPreviewData) -> UIImage? {
+        let controller = UIHostingController(rootView: walletPassFront(preview))
+        let targetRect = CGRect(origin: .zero, size: walletPreviewSize)
+        let view = controller.view
+
+        view?.bounds = targetRect
+        view?.frame = targetRect
+        view?.backgroundColor = .clear
+        view?.setNeedsLayout()
+        view?.layoutIfNeeded()
+
+        let renderer = UIGraphicsImageRenderer(size: walletPreviewSize)
+        return renderer.image { _ in
+            view?.drawHierarchy(in: targetRect, afterScreenUpdates: true)
+        }
     }
 
     private func selectedBundlePreviewImage(for file: CardMetadataFile) -> UIImage? {
@@ -1746,195 +2286,171 @@ struct CardView: View {
         }
     }
 
-    var body: some View {
+    @ViewBuilder
+    private var metadataEditorSheetContent: some View {
+        NavigationView {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Browse and edit the card bundle directly.")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.white)
+
+                Text("Pick any JSON, strings, or artwork file from the pass bundle. If Wallet has generated a sibling cache bundle, those files appear under `.cache/...` too. Text files open in the editor, and image/PDF assets open in a viewer with replace and restore actions.")
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(0.65))
+
+                Picker("File", selection: metadataPickerSelection) {
+                    ForEach(metadataFiles) { file in
+                        Text(file.relativePath).tag(file.path)
+                    }
+                }
+                .pickerStyle(.menu)
+                .tint(.cyan)
+
+                if let file = presentedMetadataFile {
+                    HStack {
+                        Text(file.kind.label)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.45))
+
+                        Spacer()
+
+                        if fileExists(atPath: metadataBackupPath(for: file)) {
+                            Text("Backup ready")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.green.opacity(0.9))
+                        }
+                    }
+
+                    if file.kind.supportsTextEditing {
+                        TextEditor(text: $metadataEditorText)
+                            .font(.system(size: 13, design: .monospaced))
+                            .padding(8)
+                            .background(Color.white.opacity(0.06))
+                            .cornerRadius(10)
+                    } else {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 12) {
+                                if let previewImage = selectedBundlePreviewImage(for: file) {
+                                    Image(uiImage: previewImage)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(maxWidth: .infinity)
+                                        .frame(minHeight: 180, maxHeight: 320)
+                                        .padding(12)
+                                        .background(Color.white.opacity(0.05))
+                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                } else {
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .fill(Color.white.opacity(0.05))
+                                        .frame(maxWidth: .infinity, minHeight: 220)
+                                        .overlay(
+                                            VStack(spacing: 10) {
+                                                Image(systemName: file.kind == .pdf ? "doc.richtext.fill" : "photo.fill")
+                                                    .font(.system(size: 32))
+                                                    .foregroundColor(.white.opacity(0.7))
+
+                                                Text("Preview unavailable for \(file.relativePath).")
+                                                    .font(.system(size: 12, weight: .semibold))
+                                                    .foregroundColor(.white.opacity(0.7))
+                                                    .multilineTextAlignment(.center)
+                                            }
+                                            .padding(20)
+                                        )
+                                }
+
+                                Text("Use Replace to swap this artwork with a photo or a file. The original asset is backed up the first time you overwrite it.")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.white.opacity(0.65))
+                            }
+                        }
+                    }
+                }
+
+                if !metadataStatusMessage.isEmpty {
+                    Text(metadataStatusMessage)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.green.opacity(0.9))
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(16)
+            .background(Color.black.ignoresSafeArea())
+            .navigationTitle("Bundle Editor")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("card_cancel") {
+                        onDismissBundleEditor?()
+                    }
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    if let file = presentedMetadataFile {
+                        if file.kind.supportsTextEditing {
+                            Button("card_rename_save") {
+                                saveMetadataEditor()
+                            }
+                        } else if file.kind.supportsAssetReplacement {
+                            Button("Replace") {
+                                openBundleAssetReplacement(for: file)
+                            }
+                        }
+                    }
+                }
+
+                ToolbarItem(placement: .bottomBar) {
+                    if let file = presentedMetadataFile,
+                       fileExists(atPath: metadataBackupPath(for: file)) {
+                        Button("card_number_restore_original", role: .destructive) {
+                            restoreMetadataEditor()
+                        }
+                    }
+                }
+            }
+            .onAppear {
+                prepareMetadataEditor()
+            }
+            .onChange(of: metadataFiles) { _ in
+                ensureMetadataSelection()
+            }
+            .confirmationDialog("Replace Asset", isPresented: $showBundleAssetSourcePicker, titleVisibility: .visible) {
+                Button("card_source_gallery") {
+                    presentBundleAssetPicker(useFiles: false)
+                }
+                Button("card_source_files") {
+                    presentBundleAssetPicker(useFiles: true)
+                }
+                Button("card_cancel", role: .cancel) {}
+            }
+            .sheet(isPresented: $showBundleImagePicker) {
+                ImagePicker(sourceType: .photoLibrary, selectedImage: self.$bundleAssetImage)
+            }
+            .sheet(isPresented: $showBundleAssetDocumentPicker) {
+                AssetDocumentPicker { importedAsset in
+                    if !pendingBundleAssetPath.isEmpty {
+                        replaceImportedBundleAsset(importedAsset, targetPath: pendingBundleAssetPath)
+                    }
+                }
+            }
+        }
+    }
+
+    private var cardTileContent: some View {
         VStack(spacing: 8) {
             previewCardView()
                 .id(imageVersion)
-            .onTapGesture {
-                guard card.kind == .paymentCard else {
-                    return
-                }
-                if exploit.canApplyCardChanges {
-                    showSourcePicker = true
-                } else {
-                    errorMessage = exploit.blockedReason
-                    showError = true
-                }
-            }
-            .confirmationDialog("card_pick_source", isPresented: $showSourcePicker, titleVisibility: .visible) {
-                Button("card_source_gallery") { presentCardAssetPicker(useFiles: false) }
-                Button("card_source_files") { presentCardAssetPicker(useFiles: true) }
-                Button("card_cancel", role: .cancel) {}
-            }
-            .sheet(isPresented: $showSheet) {
-                ImagePicker(sourceType: .photoLibrary, selectedImage: self.$cardImage)
-            }
-            .sheet(isPresented: $showDocPicker) {
-                DocumentPicker(selectedImage: self.$cardImage)
-            }
-            .sheet(isPresented: $showMetadataEditor) {
-                NavigationView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Browse and edit the card bundle directly.")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(.white)
-
-                        Text("Pick any JSON, strings, or artwork file from the pass bundle. If Wallet has generated a sibling cache bundle, those files appear under `.cache/...` too. Text files open in the editor, and image/PDF assets open in a viewer with replace and restore actions.")
-                            .font(.system(size: 12))
-                            .foregroundColor(.white.opacity(0.65))
-
-                        Picker("File", selection: $selectedMetadataPath) {
-                            ForEach(metadataFiles) { file in
-                                Text(file.relativePath).tag(file.path)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .tint(.cyan)
-
-                        if let file = selectedMetadataFile {
-                            HStack {
-                                Text(file.kind.label)
-                                    .font(.system(size: 11, design: .monospaced))
-                                    .foregroundColor(.white.opacity(0.45))
-
-                                Spacer()
-
-                                if fileExists(atPath: metadataBackupPath(for: file)) {
-                                    Text("Backup ready")
-                                        .font(.system(size: 11, weight: .semibold))
-                                        .foregroundColor(.green.opacity(0.9))
-                                }
-                            }
-
-                            if file.kind.supportsTextEditing {
-                                TextEditor(text: $metadataEditorText)
-                                    .font(.system(size: 13, design: .monospaced))
-                                    .padding(8)
-                                    .background(Color.white.opacity(0.06))
-                                    .cornerRadius(10)
-                            } else {
-                                ScrollView {
-                                    VStack(alignment: .leading, spacing: 12) {
-                                        if let previewImage = selectedBundlePreviewImage(for: file) {
-                                            Image(uiImage: previewImage)
-                                                .resizable()
-                                                .scaledToFit()
-                                                .frame(maxWidth: .infinity)
-                                                .frame(minHeight: 180, maxHeight: 320)
-                                                .padding(12)
-                                                .background(Color.white.opacity(0.05))
-                                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                        } else {
-                                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                                .fill(Color.white.opacity(0.05))
-                                                .frame(maxWidth: .infinity, minHeight: 220)
-                                                .overlay(
-                                                    VStack(spacing: 10) {
-                                                        Image(systemName: file.kind == .pdf ? "doc.richtext.fill" : "photo.fill")
-                                                            .font(.system(size: 32))
-                                                            .foregroundColor(.white.opacity(0.7))
-
-                                                        Text("Preview unavailable for \(file.relativePath).")
-                                                            .font(.system(size: 12, weight: .semibold))
-                                                            .foregroundColor(.white.opacity(0.7))
-                                                            .multilineTextAlignment(.center)
-                                                    }
-                                                    .padding(20)
-                                                )
-                                        }
-
-                                        Text("Use Replace to swap this artwork with a photo or a file. The original asset is backed up the first time you overwrite it.")
-                                            .font(.system(size: 12))
-                                            .foregroundColor(.white.opacity(0.65))
-                                    }
-                                }
-                            }
-                        }
-
-                        if !metadataStatusMessage.isEmpty {
-                            Text(metadataStatusMessage)
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(.green.opacity(0.9))
-                        }
-
-                        Spacer(minLength: 0)
+                .onTapGesture {
+                    guard card.kind == .paymentCard else {
+                        return
                     }
-                    .padding(16)
-                    .background(Color.black.ignoresSafeArea())
-                    .navigationTitle("Bundle Editor")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("card_cancel") {
-                                showMetadataEditor = false
-                            }
-                        }
-
-                        ToolbarItem(placement: .confirmationAction) {
-                            if let file = selectedMetadataFile {
-                                if file.kind.supportsTextEditing {
-                                    Button("card_rename_save") {
-                                        saveMetadataEditor()
-                                    }
-                                } else if file.kind.supportsAssetReplacement {
-                                    Button("Replace") {
-                                        openBundleAssetReplacement(for: file)
-                                    }
-                                }
-                            }
-                        }
-
-                        ToolbarItem(placement: .bottomBar) {
-                            if let file = selectedMetadataFile,
-                               fileExists(atPath: metadataBackupPath(for: file)) {
-                                Button("card_number_restore_original", role: .destructive) {
-                                    restoreMetadataEditor()
-                                }
-                            }
-                        }
-                    }
-                    .onChange(of: selectedMetadataPath) { _, newPath in
-                        if let file = metadataFiles.first(where: { $0.path == newPath }) {
-                            selectMetadataFile(file)
-                        }
-                    }
-                    .confirmationDialog("Replace Asset", isPresented: $showBundleAssetSourcePicker, titleVisibility: .visible) {
-                        Button("card_source_gallery") {
-                            presentBundleAssetPicker(useFiles: false)
-                        }
-                        Button("card_source_files") {
-                            presentBundleAssetPicker(useFiles: true)
-                        }
-                        Button("card_cancel", role: .cancel) {}
-                    }
-                    .sheet(isPresented: $showBundleImagePicker) {
-                        ImagePicker(sourceType: .photoLibrary, selectedImage: self.$bundleAssetImage)
-                    }
-                    .sheet(isPresented: $showBundleAssetDocumentPicker) {
-                        AssetDocumentPicker { importedAsset in
-                            if !pendingBundleAssetPath.isEmpty {
-                                replaceImportedBundleAsset(importedAsset, targetPath: pendingBundleAssetPath)
-                            }
-                        }
+                    if exploit.canApplyCardChanges {
+                        showSourcePicker = true
+                    } else {
+                        errorMessage = exploit.blockedReason
+                        showError = true
                     }
                 }
-            }
-            .onChange(of: self.cardImage) { _, newImage in
-                setImage(image: newImage)
-            }
-            .onChange(of: bundleAssetImage) { _, newImage in
-                guard !pendingBundleAssetPath.isEmpty else {
-                    return
-                }
-                replaceImageAsset(at: pendingBundleAssetPath, image: newImage)
-            }
-            .onAppear {
-                reloadPreviewContent()
-                currentCardNumber = readCardNumber() ?? ""
-            }
-            .onChange(of: imageVersion) { _, _ in
-                reloadPreviewContent()
-            }
 
             Text(visibleDisplayName)
                 .font(.system(size: 13, weight: .medium))
@@ -1948,7 +2464,6 @@ struct CardView: View {
                     .lineLimit(1)
             }
 
-            // Action buttons
             VStack(spacing: 8) {
                 HStack(spacing: 16) {
                     Button {
@@ -1961,7 +2476,7 @@ struct CardView: View {
                     .foregroundColor(.white.opacity(0.7))
 
                     Button {
-                        openMetadataEditor()
+                        onOpenBundleEditor?(card)
                     } label: {
                         Label("Bundle", systemImage: "folder")
                             .font(.system(size: 13))
@@ -1993,6 +2508,14 @@ struct CardView: View {
                     }
 
                     Button {
+                        applyRenderedCache()
+                    } label: {
+                        Label("Apply Cache", systemImage: "sparkles")
+                            .font(.system(size: 13))
+                    }
+                    .foregroundColor(.orange.opacity(0.9))
+
+                    Button {
                         saveToDocuments()
                     } label: {
                         Label("card_save", systemImage: "square.and.arrow.down")
@@ -2003,6 +2526,76 @@ struct CardView: View {
             }
             .padding(.top, 4)
         }
+    }
+
+    var body: some View {
+        Group {
+            if embeddedBundleEditor {
+                metadataEditorSheetContent
+            } else {
+                cardTileContent
+                    .confirmationDialog("card_pick_source", isPresented: $showSourcePicker, titleVisibility: .visible) {
+                        Button("card_source_gallery") {
+                            presentCardAssetPicker(useFiles: false)
+                        }
+                        Button("card_source_files") {
+                            presentCardAssetPicker(useFiles: true)
+                        }
+                        Button("card_cancel", role: .cancel) {}
+                    }
+                    .sheet(isPresented: $showSheet) {
+                        ImagePicker(sourceType: .photoLibrary, selectedImage: self.$cardImage)
+                    }
+                    .sheet(isPresented: $showDocPicker) {
+                        DocumentPicker(selectedImage: self.$cardImage)
+                    }
+                    .alert("card_rename_title", isPresented: $showNicknameEditor) {
+                        TextField(L("card_nickname_placeholder"), text: $nicknameInput)
+                        Button("card_rename_save") {
+                            CardNicknameManager.shared.setNickname(nicknameInput.isEmpty ? nil : nicknameInput, for: card.directoryPath)
+                        }
+                        Button("card_clear_name", role: .destructive) {
+                            CardNicknameManager.shared.setNickname(nil, for: card.directoryPath)
+                            nicknameInput = ""
+                        }
+                        Button("card_cancel", role: .cancel) {}
+                    } message: {
+                        Text("card_rename_message")
+                    }
+                    .alert("card_number_title", isPresented: $showCardNumberEditor) {
+                        TextField(L("card_number_placeholder"), text: $cardNumberInput)
+                        Button("card_rename_save") {
+                            applyCardNumber(cardNumberInput)
+                        }
+                        if fileExists(atPath: passJsonBackupPath) {
+                            Button("card_number_restore_original", role: .destructive) {
+                                restorePassJson()
+                            }
+                        }
+                        Button("card_cancel", role: .cancel) {}
+                    } message: {
+                        Text(currentCardNumber.isEmpty
+                             ? L("card_number_message_empty")
+                             : String(format: L("card_number_message"), currentCardNumber))
+                    }
+            }
+        }
+        .onChange(of: self.cardImage) { newImage in
+            setImage(image: newImage)
+        }
+        .onChange(of: bundleAssetImage) { newImage in
+            guard !pendingBundleAssetPath.isEmpty else {
+                return
+            }
+            replaceImageAsset(at: pendingBundleAssetPath, image: newImage)
+        }
+        .onAppear {
+            reloadPreviewContent()
+            currentCardNumber = readCardNumber() ?? ""
+        }
+        .onChange(of: imageVersion) { _ in
+            reloadPreviewContent()
+        }
         .alert("card_error", isPresented: $showError) {
             Button("card_ok", role: .cancel) {}
         } message: {
@@ -2011,36 +2604,11 @@ struct CardView: View {
         .alert("card_saved", isPresented: $showSaved) {
             Button("card_ok", role: .cancel) {}
         } message: {
-            Text("card_saved_message")
-        }
-        .alert("card_rename_title", isPresented: $showNicknameEditor) {
-            TextField(L("card_nickname_placeholder"), text: $nicknameInput)
-            Button("card_rename_save") {
-                CardNicknameManager.shared.setNickname(nicknameInput.isEmpty ? nil : nicknameInput, for: card.directoryPath)
+            if successMessage.isEmpty {
+                Text("card_saved_message")
+            } else {
+                Text(successMessage)
             }
-            Button("card_clear_name", role: .destructive) {
-                CardNicknameManager.shared.setNickname(nil, for: card.directoryPath)
-                nicknameInput = ""
-            }
-            Button("card_cancel", role: .cancel) {}
-        } message: {
-            Text("card_rename_message")
-        }
-        .alert("card_number_title", isPresented: $showCardNumberEditor) {
-            TextField(L("card_number_placeholder"), text: $cardNumberInput)
-            Button("card_rename_save") {
-                applyCardNumber(cardNumberInput)
-            }
-            if fileExists(atPath: passJsonBackupPath) {
-                Button("card_number_restore_original", role: .destructive) {
-                    restorePassJson()
-                }
-            }
-            Button("card_cancel", role: .cancel) {}
-        } message: {
-            Text(currentCardNumber.isEmpty
-                 ? L("card_number_message_empty")
-                 : String(format: L("card_number_message"), currentCardNumber))
         }
     }
 }
