@@ -10,6 +10,7 @@ final class LanguageManager: ObservableObject {
     }
 
     static let supportedLanguages: [Language] = [
+        Language(id: "az", name: "Azərbaycan"),
         Language(id: "en", name: "English"),
         Language(id: "es", name: "Español"),
         Language(id: "fr", name: "Français"),
