@@ -290,6 +290,54 @@ void killall(NSString* processName) {
         }
     });
 }
+// MARK: - NFC daemon helpers (file-scope C)
+
+static NSString * const kA3NFCDSocketPath = @"/var/run/a3nfcd.socket";
+static const NSTimeInterval kA3NFCDSocketTimeout = 3.0;
+
+static NSString * _Nullable a3_nfcd_send_command(NSString *command) {
+    int sock = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (sock < 0) return nil;
+
+    struct timeval tv;
+    tv.tv_sec  = (int)kA3NFCDSocketTimeout;
+    tv.tv_usec = 0;
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strlcpy(addr.sun_path, kA3NFCDSocketPath.UTF8String, sizeof(addr.sun_path));
+
+    if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        close(sock);
+        return nil;
+    }
+
+    NSString *line = [command stringByAppendingString:@"\n"];
+    const char *buf = line.UTF8String;
+    ssize_t sent = write(sock, buf, strlen(buf));
+    if (sent <= 0) { close(sock); return nil; }
+
+    char rbuf[512] = {0};
+    ssize_t n = read(sock, rbuf, sizeof(rbuf) - 1);
+    close(sock);
+    if (n <= 0) return nil;
+
+    NSString *resp = [NSString stringWithUTF8String:rbuf];
+    return [resp stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+}
+
+static NSString *a3_data_to_hex(NSData *data) {
+    const unsigned char *bytes = (const unsigned char *)data.bytes;
+    NSMutableString *hex = [NSMutableString stringWithCapacity:data.length * 2];
+    for (NSUInteger i = 0; i < data.length; i++) {
+        [hex appendFormat:@"%02X", bytes[i]];
+    }
+    return hex;
+}
+
 -(void)stopNFCDaemon {
     killall(@"nfcd");
     // Small wait for the OS to reclaim the process.
