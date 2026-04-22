@@ -122,9 +122,9 @@ final class NFCDaemonManager: ObservableObject {
         print("[NFCDaemonManager] Loading card: \(card.displayName) (\(card.uidHex))")
 
         let ok = await runOnBackground {
-            self.helper.nfcdLoadCard(
-                uid: card.uid,
-                ats: card.ats ?? Data(),
+            self.helper.nfcdLoadCardUID(
+                card.uid,
+                ats: card.ats,
                 apduResponses: card.apduResponses
             )
         }

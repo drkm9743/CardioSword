@@ -152,7 +152,6 @@ struct NFCEmulationView: View {
         }
         .listStyle(.plain)
         .background(Color.black)
-        .scrollContentBackground(.hidden)
     }
 
     // MARK: - Empty state
@@ -299,7 +298,7 @@ struct NFCCardDetailView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
+        NavigationView {
             ZStack {
                 Color.black.ignoresSafeArea()
                 List {
@@ -359,7 +358,6 @@ struct NFCCardDetailView: View {
                     .listRowBackground(Color.white.opacity(0.06))
                 }
                 .listStyle(.insetGrouped)
-                .scrollContentBackground(.hidden)
             }
             .navigationTitle(card.displayName)
             .navigationBarTitleDisplayMode(.inline)
