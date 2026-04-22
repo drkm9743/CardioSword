@@ -292,8 +292,14 @@ void killall(NSString* processName) {
 }
 // MARK: - NFC daemon helpers (file-scope C)
 
-static NSString * const kA3NFCDSocketPath = @"/var/run/a3nfcd.socket";
+// Dynamic socket path — computed from NSTemporaryDirectory when daemon is launched
+// so both the app process and the sandboxed nfcd_a3 child can reach it.
+static NSString *g_a3NFCDSocketPath = nil;
 static const NSTimeInterval kA3NFCDSocketTimeout = 3.0;
+
+static NSString *a3_socket_path(void) {
+    return g_a3NFCDSocketPath ?: @"/var/run/a3nfcd.socket";
+}
 
 static NSString * _Nullable a3_nfcd_send_command(NSString *command) {
     int sock = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -308,7 +314,7 @@ static NSString * _Nullable a3_nfcd_send_command(NSString *command) {
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
-    strlcpy(addr.sun_path, kA3NFCDSocketPath.UTF8String, sizeof(addr.sun_path));
+    strlcpy(addr.sun_path, a3_socket_path().UTF8String, sizeof(addr.sun_path));
 
     if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         close(sock);
@@ -344,6 +350,7 @@ static NSString *a3_data_to_hex(NSData *data) {
     // CoreNFC.framework still route through it for NFC hardware access.
     killall(@"nfcd_a3");
     usleep(200000); // 0.2 s
+    g_a3NFCDSocketPath = nil;
 }
 
 -(BOOL)startNFCDaemonAtPath:(NSString *)path {
@@ -352,43 +359,62 @@ static NSString *a3_data_to_hex(NSData *data) {
         return NO;
     }
 
+    // Compute socket path in NSTemporaryDirectory — writable by both the
+    // parent (after sandbox escape) and the sandboxed child process.
+    NSString *socketPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"a3nfcd.socket"];
+    [[NSFileManager defaultManager] removeItemAtPath:socketPath error:nil]; // remove stale socket
+    g_a3NFCDSocketPath = socketPath;
+    NSLog(@"[ObjcHelper] nfcd_a3 socket path: %@", socketPath);
+
     // Ensure the binary is executable.
     const char *cPath = path.fileSystemRepresentation;
     chmod(cPath, 0755);
 
+    // Pass the socket path to the child via an environment variable.
+    NSString *socketEnv = [NSString stringWithFormat:@"A3NFCD_SOCKET=%@", socketPath];
+    char * const envp[] = { (char *)socketEnv.UTF8String, NULL };
+    char * const argv[] = { (char *)cPath, NULL };
+
+    // ── Attempt 1: spawn with root persona (requires platform-application ent.) ──
     posix_spawnattr_t attr;
     posix_spawnattr_init(&attr);
     posix_spawnattr_setflags(&attr, POSIX_SPAWN_CLOEXEC_DEFAULT);
-
-    // Attempt to spawn with root persona (requires platform-application entitlement).
     posix_spawnattr_set_persona_np(&attr, 99, POSIX_SPAWN_PERSONA_FLAGS_OVERRIDE);
     posix_spawnattr_set_persona_uid_np(&attr, 0);
     posix_spawnattr_set_persona_gid_np(&attr, 0);
 
-    char * const argv[] = { (char *)cPath, NULL };
-    char * const envp[] = { NULL };
     pid_t pid = 0;
-
     int rc = posix_spawn(&pid, cPath, NULL, &attr, argv, envp);
     posix_spawnattr_destroy(&attr);
 
     if (rc != 0) {
-        NSLog(@"[ObjcHelper] posix_spawn nfcd_a3 failed: %d (%s)", rc, strerror(rc));
-        return NO;
+        NSLog(@"[ObjcHelper] persona spawn failed (%d: %s) — retrying without persona", rc, strerror(rc));
+
+        // ── Attempt 2: plain spawn as mobile ──
+        posix_spawnattr_t plain_attr;
+        posix_spawnattr_init(&plain_attr);
+        posix_spawnattr_setflags(&plain_attr, POSIX_SPAWN_CLOEXEC_DEFAULT);
+        rc = posix_spawn(&pid, cPath, NULL, &plain_attr, argv, envp);
+        posix_spawnattr_destroy(&plain_attr);
+
+        if (rc != 0) {
+            NSLog(@"[ObjcHelper] plain spawn also failed: %d (%s)", rc, strerror(rc));
+            return NO;
+        }
+        NSLog(@"[ObjcHelper] nfcd_a3 spawned (plain mobile) pid=%d", (int)pid);
+    } else {
+        NSLog(@"[ObjcHelper] nfcd_a3 spawned (root persona) pid=%d", (int)pid);
     }
 
-    NSLog(@"[ObjcHelper] nfcd_a3 spawned with pid %d", (int)pid);
-
-    // Wait briefly for socket to appear (up to 3 s).
-    NSString *sockPath = kA3NFCDSocketPath;
+    // Wait for socket to appear (up to 3 s).
     for (int i = 0; i < 30; i++) {
         usleep(100000); // 0.1 s
-        if ([[NSFileManager defaultManager] fileExistsAtPath:sockPath]) {
+        if ([[NSFileManager defaultManager] fileExistsAtPath:socketPath]) {
             NSLog(@"[ObjcHelper] nfcd_a3 socket ready after %d00ms", i + 1);
             return YES;
         }
     }
-    NSLog(@"[ObjcHelper] nfcd_a3 socket did not appear within 3s");
+    NSLog(@"[ObjcHelper] nfcd_a3 socket did not appear within 3s (path=%@)", socketPath);
     return NO;
 }
 

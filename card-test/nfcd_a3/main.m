@@ -289,14 +289,27 @@ static void *client_fn(void *arg) {
 
 // ─────────────────────────── Entry point ─────────────────────────────
 
+// Resolved socket path — may be overridden via $A3NFCD_SOCKET env var.
+// The parent (ObjcHelper) passes NSTemporaryDirectory()-based path so
+// both the spawning process (after sandbox escape) and this sandboxed
+// child process can reach the same socket.
+static char g_socket_path[PATH_MAX] = SOCKET_PATH;
+
 int main(void) {
     signal(SIGPIPE, SIG_IGN);
     signal(SIGCHLD, SIG_IGN);
 
     @autoreleasepool {
-        NSLog(@"[nfcd_a3] v1.0 start pid=%d uid=%d", getpid(), getuid());
+        // Accept socket path override from parent process.
+        const char *envPath = getenv("A3NFCD_SOCKET");
+        if (envPath && strlen(envPath) > 0 && strlen(envPath) < sizeof(g_socket_path)) {
+            strlcpy(g_socket_path, envPath, sizeof(g_socket_path));
+        }
 
-        unlink(SOCKET_PATH);
+        NSLog(@"[nfcd_a3] v1.0 start pid=%d uid=%d socket=%s",
+              getpid(), getuid(), g_socket_path);
+
+        unlink(g_socket_path);
 
         int srv = socket(AF_UNIX, SOCK_STREAM, 0);
         if (srv < 0) {
@@ -310,7 +323,7 @@ int main(void) {
         struct sockaddr_un sa;
         memset(&sa, 0, sizeof(sa));
         sa.sun_family = AF_UNIX;
-        strlcpy(sa.sun_path, SOCKET_PATH, sizeof(sa.sun_path));
+        strlcpy(sa.sun_path, g_socket_path, sizeof(sa.sun_path));
 
         if (bind(srv, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
             NSLog(@"[nfcd_a3] bind: %s", strerror(errno));
@@ -319,7 +332,7 @@ int main(void) {
         }
 
         // World-writable so the app process (any uid) can connect
-        chmod(SOCKET_PATH, 0777);
+        chmod(g_socket_path, 0777);
 
         if (listen(srv, 8) < 0) {
             NSLog(@"[nfcd_a3] listen: %s", strerror(errno));
@@ -327,7 +340,7 @@ int main(void) {
             return 1;
         }
 
-        NSLog(@"[nfcd_a3] Listening on %s", SOCKET_PATH);
+        NSLog(@"[nfcd_a3] Listening on %s", g_socket_path);
 
         for (;;) {
             int cli = accept(srv, NULL, NULL);

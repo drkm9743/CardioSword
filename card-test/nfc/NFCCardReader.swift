@@ -24,7 +24,14 @@ final class NFCCardReader: NSObject, ObservableObject {
     // MARK: - Public
 
     func scan(completion: @escaping (Result<NFCCard, Error>) -> Void) {
-        guard NFCTagReaderSession.readingAvailable else {
+        // readingAvailable is false when the app lacks a valid NFC code-signing
+        // entitlement (com.apple.developer.nfc.readersession.formats). In a
+        // kexploit context the sandbox is escaped at runtime but the code
+        // signature is not patched, so readingAvailable stays false even though
+        // the NFC hardware is present. Let the session attempt run anyway so
+        // CoreNFC surfaces the real error instead of our generic guard.
+        let sandboxEscaped = ExploitManager.shared.sandboxEscaped
+        guard NFCTagReaderSession.readingAvailable || sandboxEscaped else {
             completion(.failure(ReaderError.nfcUnavailable))
             return
         }
@@ -37,6 +44,15 @@ final class NFCCardReader: NSObject, ObservableObject {
             delegate: self,
             queue: .global(qos: .userInitiated)
         )
+        guard session != nil else {
+            // Session init returns nil when the code signature doesn't carry the
+            // NFC entitlement. Even with sandbox escape the process needs the
+            // entitlement in a valid codesign blob (TrollStore or developer cert).
+            isScanning = false
+            completion(.failure(ReaderError.nfcEntitlementMissing))
+            onComplete = nil
+            return
+        }
         session?.alertMessage = "Hold your card near the top of your iPhone."
         session?.begin()
     }
@@ -44,10 +60,13 @@ final class NFCCardReader: NSObject, ObservableObject {
     // MARK: - Errors
 
     enum ReaderError: LocalizedError {
-        case nfcUnavailable, unsupportedTag, readFailed(String)
+        case nfcUnavailable, nfcEntitlementMissing, unsupportedTag, readFailed(String)
         var errorDescription: String? {
             switch self {
-            case .nfcUnavailable:    return "NFC is not available on this device."
+            case .nfcUnavailable:
+                return "NFC is not available on this device."
+            case .nfcEntitlementMissing:
+                return "NFC reading requires the app to be signed with the NFC capability. Install via TrollStore or a developer certificate that includes NFC reading."
             case .unsupportedTag:    return "This tag type is not yet supported."
             case .readFailed(let m): return "Read failed: \(m)"
             }
