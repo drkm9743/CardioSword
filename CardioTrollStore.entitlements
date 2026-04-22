@@ -2,6 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- ── Existing entitlements ── -->
 	<key>platform-application</key>
 	<true/>
 	<key>com.apple.private.security.no-sandbox</key>
@@ -12,5 +13,28 @@
 	<true/>
 	<key>com.apple.security.network.client</key>
 	<true/>
+
+	<!-- ── NFC reading (CoreNFC) ── -->
+	<key>com.apple.developer.nfc.readersession.formats</key>
+	<array>
+		<string>NDEF</string>
+		<string>TAG</string>
+	</array>
+
+	<!-- ── NFC card emulation (requires platform-application) ── -->
+	<key>com.apple.private.nfc</key>
+	<true/>
+	<key>com.apple.nfc.cardemulation</key>
+	<true/>
+
+	<!-- ── launchd / XPC (for managing nfcd via posix_spawn) ── -->
+	<key>com.apple.private.launchctl.xpc</key>
+	<true/>
+
+	<!-- ── IOKit NFC user client ── -->
+	<key>com.apple.security.iokit-user-client-class</key>
+	<array>
+		<string>IONFCUserClient</string>
+	</array>
 </dict>
 </plist>

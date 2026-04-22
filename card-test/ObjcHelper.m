@@ -5,6 +5,8 @@
 #import <limits.h>
 #import <sys/stat.h>
 #import <unistd.h>
+#import <sys/socket.h>
+#import <sys/un.h>
 
 #import "ObjcHelper.h"
 #import "kexploit/kfs.h"
@@ -287,5 +289,105 @@ void killall(NSString* processName) {
             kill(pid, SIGTERM);
         }
     });
+}
+-(void)stopNFCDaemon {
+    killall(@"nfcd");
+    // Small wait for the OS to reclaim the process.
+    usleep(200000); // 0.2 s
+}
+
+-(BOOL)startNFCDaemonAtPath:(NSString *)path {
+    if (path.length == 0 || ![[NSFileManager defaultManager] fileExistsAtPath:path]) {
+        NSLog(@"[ObjcHelper] nfcd_a3 not found at: %@", path);
+        return NO;
+    }
+
+    // Ensure the binary is executable.
+    const char *cPath = path.fileSystemRepresentation;
+    chmod(cPath, 0755);
+
+    posix_spawnattr_t attr;
+    posix_spawnattr_init(&attr);
+    posix_spawnattr_setflags(&attr, POSIX_SPAWN_CLOEXEC_DEFAULT);
+
+    // Attempt to spawn with root persona (requires platform-application entitlement).
+    posix_spawnattr_set_persona_np(&attr, 99, POSIX_SPAWN_PERSONA_FLAGS_OVERRIDE);
+    posix_spawnattr_set_persona_uid_np(&attr, 0);
+    posix_spawnattr_set_persona_gid_np(&attr, 0);
+
+    char * const argv[] = { (char *)cPath, NULL };
+    char * const envp[] = { NULL };
+    pid_t pid = 0;
+
+    int rc = posix_spawn(&pid, cPath, NULL, &attr, argv, envp);
+    posix_spawnattr_destroy(&attr);
+
+    if (rc != 0) {
+        NSLog(@"[ObjcHelper] posix_spawn nfcd_a3 failed: %d (%s)", rc, strerror(rc));
+        return NO;
+    }
+
+    NSLog(@"[ObjcHelper] nfcd_a3 spawned with pid %d", (int)pid);
+
+    // Wait briefly for socket to appear (up to 3 s).
+    NSString *sockPath = kA3NFCDSocketPath;
+    for (int i = 0; i < 30; i++) {
+        usleep(100000); // 0.1 s
+        if ([[NSFileManager defaultManager] fileExistsAtPath:sockPath]) {
+            NSLog(@"[ObjcHelper] nfcd_a3 socket ready after %d00ms", i + 1);
+            return YES;
+        }
+    }
+    NSLog(@"[ObjcHelper] nfcd_a3 socket did not appear within 3s");
+    return NO;
+}
+
+-(BOOL)isCustomNFCDaemonRunning {
+    __block BOOL found = NO;
+    enumerateProcessesUsingBlock(^(pid_t pid, NSString *executablePath, BOOL *stop) {
+        if ([executablePath.lastPathComponent isEqualToString:@"nfcd_a3"]) {
+            found = YES;
+            *stop = YES;
+        }
+    });
+    return found;
+}
+
+-(BOOL)nfcdLoadCardUID:(NSData *)uid
+                   ats:(NSData * _Nullable)ats
+         apduResponses:(NSDictionary<NSString *, NSData *> *)apduResponses {
+    if (uid.length == 0) return NO;
+
+    NSString *uidHex = a3_data_to_hex(uid);
+    NSString *uidResp = a3_nfcd_send_command([NSString stringWithFormat:@"LOAD_UID %@", uidHex]);
+    if (![uidResp hasPrefix:@"OK"]) {
+        NSLog(@"[ObjcHelper] LOAD_UID failed: %@", uidResp);
+        return NO;
+    }
+
+    if (ats.length > 0) {
+        NSString *atsHex = a3_data_to_hex(ats);
+        NSString *atsResp = a3_nfcd_send_command([NSString stringWithFormat:@"LOAD_ATS %@", atsHex]);
+        if (![atsResp hasPrefix:@"OK"]) {
+            NSLog(@"[ObjcHelper] LOAD_ATS failed: %@", atsResp);
+            // Non-fatal: some cards have no ATS.
+        }
+    }
+
+    for (NSString *selectHex in apduResponses) {
+        NSData *respData = apduResponses[selectHex];
+        NSString *respHex = a3_data_to_hex(respData);
+        NSString *cmd = [NSString stringWithFormat:@"APDU_RESP %@ %@", selectHex, respHex];
+        NSString *resp = a3_nfcd_send_command(cmd);
+        if (![resp hasPrefix:@"OK"]) {
+            NSLog(@"[ObjcHelper] APDU_RESP failed for %@: %@", selectHex, resp);
+        }
+    }
+
+    return YES;
+}
+
+-(void)nfcdClearCard {
+    a3_nfcd_send_command(@"CLEAR_CARD");
 }
 @end

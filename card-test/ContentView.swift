@@ -1214,6 +1214,16 @@ struct ContentView: View {
                     Text(exploit.accessTabTitle)
                 }
                 .tag(3)
+
+            NFCEmulationView()
+                .tabItem {
+                    Image(systemName: "wave.3.right.circle")
+                    Text("NFC")
+                }
+                .tag(4)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .cardioSelectTab)) { notif in
+            if let tab = notif.object as? Int { selectedTab = tab }
         }
         .environment(\.locale, langMgr.locale)
         .accentColor(.white)
@@ -1231,6 +1241,9 @@ struct ContentView: View {
         .onChange(of: selectedTab) { newTab in
             if newTab == 3 {
                 refreshExploitTabState()
+            }
+            if newTab == 4 {
+                // NFC tab selected — daemon observes ExploitManager automatically
             }
         }
         .onChange(of: hideArchivedWalletItems) { _ in
